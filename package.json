@@ -8,11 +8,15 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.browser.json --noEmit",
     "check": "esbuild scripts/check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/check.mjs && node node_modules/.cache/check.mjs",
-    "check:render": "esbuild scripts/render-check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/render-check.mjs && node node_modules/.cache/render-check.mjs"
+    "check:render": "esbuild scripts/render-check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/render-check.mjs && node node_modules/.cache/render-check.mjs",
+    "shot": "esbuild scripts/browser/shot.ts --bundle --format=esm --platform=node --packages=external --outfile=node_modules/.cache/shot.mjs && node node_modules/.cache/shot.mjs",
+    "check:page": "esbuild scripts/browser/page-check.ts --bundle --format=esm --platform=node --packages=external --outfile=node_modules/.cache/page-check.mjs && node node_modules/.cache/page-check.mjs"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
+    "puppeteer-core": "^25.5.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }

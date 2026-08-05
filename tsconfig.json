@@ -14,5 +14,7 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["src", "scripts", "vite.config.ts"]
+  "include": ["src", "scripts", "vite.config.ts"],
+  // Node's own types, and only there: see tsconfig.browser.json.
+  "exclude": ["scripts/browser"]
 }

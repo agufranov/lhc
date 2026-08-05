@@ -31,16 +31,16 @@ body {
   display: block;
 }
 
-/* The right column is `auto`: it is as wide as the machine readouts until an experiment has
-   an event to show, and as wide as an experiment's panel after that. Widths come from
-   `ui/layout.ts` through custom properties, because `check:render` has to be able to assert
-   that the panels stand clear of the collider drawn underneath them. */
+/* Two columns: the machine readouts on the left and the picture. Everything on the right —
+   the readouts' rail and the two experiments — is *placed* rather than flowed, from numbers
+   `ui/layout.ts` works out against the camera and publishes here as custom properties, because
+   where they can go is a fact about where the machine is drawn. */
 .overlay {
   position: fixed;
   inset: 0;
   pointer-events: none;
   display: grid;
-  grid-template-columns: var(--readout-column, 260px) 1fr auto;
+  grid-template-columns: 1fr;
   grid-template-rows: auto 1fr auto;
   gap: var(--overlay-gap, 16px);
   padding: var(--overlay-padding, 16px);
@@ -51,7 +51,7 @@ body {
 }
 
 .title {
-  grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -76,57 +76,56 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 12px 14px;
+  /* Tight on purpose: two readouts have to share one column and were four pixels each from
+     fitting a 906 px window. `check:page` is what says whether they do. */
+  padding: 10px 12px 11px;
   backdrop-filter: blur(6px);
   font-size: 11.5px;
   align-self: start;
 }
 
-.panel--beam {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-/* Bottom of the same column as the beam readout: the two belong together, and there is
-   nothing else in that column until the compute panel in the row below. */
-.panel--physics {
-  grid-column: 1;
-  grid-row: 2;
-  align-self: end;
-}
-
+.panel--beam,
+.panel--physics,
 .panel--compute {
-  grid-column: 1;
-  grid-row: 3;
-  align-self: end;
+  width: var(--readout-column, 260px);
+  flex: 0 0 auto;
 }
 
-/* One rail down the right, spanning both free rows. The experiments take its ends — they are
-   pictures rather than readouts, and the eye finds them without reading — and the machine
-   readouts sit between them, right-aligned to their own narrower width. If the window cannot
-   hold everything it is the middle that scrolls, because a number can be scrolled to and a
-   picture cannot. */
+/* Both rails: a column of readouts, placed rather than flowed, running from under the title
+   to over the button bar.
+
+   The right one used to hold the experiments as well, at its top and bottom ends. There is
+   not enough column for that: POWER alone wants 460 px and INJECTOR another 270, so the moment
+   both experiments triggered the readouts were crushed into a 115 px scroller with the
+   injector panel off the bottom of it. The experiments are placed against the machine now, in
+   the free bands above and below the injector — see `.panel--event` and `eventCardBoxes`.
+
+   They still scroll when a window is too short to hold them, which is the one thing a column
+   of numbers may do: a number can be scrolled to and a picture cannot. */
 .rail {
-  grid-column: 3;
-  grid-row: 2 / 4;
+  position: fixed;
+  top: var(--rail-top, 56px);
+  bottom: var(--rail-bottom, 72px);
+  width: var(--readout-column, 260px);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: var(--overlay-gap, 16px);
-  min-height: 0;
-  pointer-events: none;
-}
-
-.rail__mid {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
   pointer-events: auto;
+}
+
+.rail--left {
+  left: var(--overlay-padding, 16px);
+  align-items: flex-start;
+}
+
+#rail-right {
+  right: var(--overlay-padding, 16px);
+  top: var(--rail-right-top, 56px);
+  bottom: var(--rail-right-bottom, 72px);
+  align-items: flex-end;
 }
 
 .panel--power,
@@ -135,17 +134,36 @@ body {
   flex: 0 0 auto;
 }
 
+/* Placed, not flowed. Where a card goes is a fact about where the machine is drawn — which
+   the stylesheet cannot know and the camera can — so `main.ts` publishes the whole box each
+   frame and this only says what to do with it. The width is published too rather than left to
+   shrink-to-fit: shrink-to-fit rounded it up two pixels and put the card over the margin. */
 .panel--event {
-  flex: 0 0 auto;
-  width: var(--event-panel-width, 380px);
+  position: fixed;
+}
+
+#panel-ip-a {
+  top: var(--event-a-top, 16px);
+  left: var(--event-a-left, auto);
+  width: var(--event-a-width, 442px);
+  --event-canvas: var(--event-a-canvas, 196px);
+}
+
+#panel-ip-b {
+  top: var(--event-b-top, auto);
+  left: var(--event-b-left, auto);
+  width: var(--event-b-width, 442px);
+  --event-canvas: var(--event-b-canvas, 196px);
 }
 
 /* The picture and its numbers side by side. Stacked, the panel was 360 px tall and two of
-   them would not fit a short window; beside each other it is 246 px and the canvas is
-   bigger. */
+   them would not fit a short window; beside each other it is shorter and the canvas is
+   bigger. Both columns are given, not one and a `1fr`: the picture is sized against the band
+   the card stands in (see `eventCardBoxes`) and the numbers keep the width they were measured
+   at, so a wider window grows the picture and nothing else. */
 .event-body {
   display: grid;
-  grid-template-columns: var(--event-canvas, 196px) 1fr;
+  grid-template-columns: var(--event-canvas, 196px) var(--event-side, 210px);
   gap: 12px;
   align-items: start;
 }
@@ -277,7 +295,6 @@ body {
 }
 
 .controls {
-  grid-column: 1 / -1;
   grid-row: 3;
   pointer-events: auto;
   justify-self: center;

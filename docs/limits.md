@@ -108,3 +108,16 @@ tracked in it.
   detection is stretched from ~10 ms to something visible. Both are marked in `powering.ts`.
 - **A quench takes ~16 MJ** because the deposit is spread over the whole 4235 t string, so a
   450 GeV batch never quenches anything. See `impacts.md` for why that trade was taken.
+- **A window under about 1700 px wide cannot hold the overlay the machine deserves.** The
+  experiments' cards need ~440 px beside the readouts' 260 and there is not that much room
+  outside the collider's arc; below it the cards retreat into the readout column and the
+  readouts scroll, which is the old behaviour and the reason the layout was rewritten. What is
+  guaranteed at every size is that nothing is drawn on top of anything — `check:page` asserts
+  that at 1280×860 too.
+- **The left-hand rail scrolls on a short window.** A filled beam readout, the physics panel
+  and the compute panel want about 1020 px of column, and a 906 px window has 768. It scrolls
+  rather than overlapping, which is what it used to do instead; `check:page` prints how much
+  is hidden and does not fail on it.
+- **A card may reach up to 40 px over an arc** (`OVERHANG_ALLOWED`) when its band is too narrow
+  for a readable picture, and it may cover a transfer line freely — rings are treated as hard
+  obstacles and lines as soft. Argued in `rendering.md`; the alternative was hiding readouts.

@@ -132,3 +132,30 @@ None of these threw. All of them looked like broken physics.
   its window and timed out against the wall clock, so it behaved one way in the browser and
   never relaxed or timed out at all under `check`, which runs twenty seconds of beam in fifty
   milliseconds. Anything the machine waits for is on `World.elapsed` now.
+- **Three green gates and the overlay was on top of itself.** The two experiments' cards and
+  the machine readouts shared one flex rail: the moment both experiments triggered, POWER was
+  crushed into a 115 px scroller, INJECTOR was pushed off the bottom of it and the lower card
+  slid under the button bar. `typecheck`, `check` and `check:render` all passed, and they
+  always would have — the overlay is HTML over the canvas, and an assertion about what the
+  *renderer was asked to draw* cannot see a panel covering a panel. The lesson is not about
+  flexbox. It is that a whole category of user-visible bug had no gate at all, and the fix was
+  to add one (`check:page`) rather than to fix the instance. On its first run it found two
+  more overlaps nobody had reported.
+- **"There is no browser here" was written down and believed for months.** There is: Chrome is
+  installed, `puppeteer-core` drives it headless, and a screenshot takes twenty seconds. Every
+  layout question above was answered by *looking*. Check an environment claim before building
+  around it.
+- **A layout modelled as "picture plus chrome" was 60 px short of the box the browser made.**
+  The numbers column beside the picture is the taller of the two, not the picture — at 148 px
+  wide its values wrapped to three lines and it stood 294 px against a 235 px picture. Both
+  cards then ran past the ends of their bands. Anything whose height depends on text wrapping
+  has to be *measured* in a browser and re-measured by a check, never added up from the
+  stylesheet.
+- **Sizing a card against a whole band gives away width to whatever crosses the far end of
+  it.** TI 8 cuts across the top of the space below the injector on its way in, and it alone
+  cost the lower card 90 px — enough to push it out of the layout entirely. The band is asked
+  for the strip the card actually occupies, in two passes: place, re-measure, re-place.
+- **A boundary test written as "on or past the edge" put the injector inside its own band.**
+  The bands are defined as *above the injector's top* and *below its bottom*, and the SPS's
+  own extreme points landed exactly on those lines, so floating-point equality handed every
+  card an obstacle at the middle of the SPS. The ring that defines a band is excluded from it.

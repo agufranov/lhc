@@ -26,8 +26,9 @@ Where it goes:
 
 Two things that are not optional:
 
-- **A behaviour the user can see gets an assertion in `check:render`.** That is the only
-  regression net for anything visual — see "No browser here".
+- **A behaviour the user can see gets an assertion**: `check:render` if it is drawn,
+  `check:page` if it is placed. Those are the whole regression net for anything visual —
+  see "Seeing the page".
 - **A measured number gets printed by `check` or `check:render`**, not just written down, so
   the next session can re-measure it instead of trusting it.
 
@@ -78,11 +79,13 @@ Run these with the **Bash** tool, not PowerShell — see below.
 ```
 npm install
 npm start            # http://127.0.0.1:5173 (strictPort)
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc --noEmit, both configs (see tsconfig.browser.json)
 npm run check        # headless: lattice, tracking, extraction, dumps, powering, quench,
                      # damage, showers, pacing, collisions and phasing — every number in
                      # docs/reference.md comes from it
 npm run check:render # headless renderer smoke test against a recording mock canvas
+npm run check:page   # the overlay measured in real headless Chrome: what covers what
+npm run shot -- 1919 906 out.png   # a screenshot of the running toy, headless
 ```
 
 `npm run build` runs the typecheck then `vite build`.
@@ -108,21 +111,36 @@ npm run check:render # headless renderer smoke test against a recording mock can
   asset by an absolute `/…` path** at runtime; it resolves to the domain root and 404s there
   while working perfectly on the dev server.
 
-## No browser here
+## Seeing the page
 
-There is no way to see the rendered page from this environment. Do not claim a visual
-result was verified. What *can* be verified:
+**There is a browser.** `puppeteer-core` drives the Chrome already installed on this machine,
+headless — nothing opens on screen, nothing steals focus. `scripts/browser/` holds it:
+`page.ts` (launch, drive the machine to two colliding beams, wait on what the panels *say*
+rather than on the clock), `shot.ts` (a screenshot you can look at), `page-check.ts` (the
+overlay measured with `getBoundingClientRect`). It starts its own Vite server if 5173 is not
+already up. An earlier version of this file said no browser was available; it was wrong, and
+a layout bug lived through three green gates because of it.
+
+Four gates, and each sees something the others cannot:
 
 1. `npm run typecheck`
 2. `npm run check` — physics
 3. `npm run check:render` — drawing, via a recording mock canvas
-4. Fetching modules off the dev server to confirm they transform
+4. `npm run check:page` — layout, in a real browser
 
-`check:render` exists because a drawing bug is invisible to all of the above, and it has
-earned its keep several times over — a band fill that buried every magnet, a comet drawn
-across the picture, a dipole shaded dead while a kicker fired, a cascade drawn three pixels
-long, a collision flashing in a detector with no beam drawn near it. **When a visual
-behaviour is requested, add an assertion for it there.**
+`check:render` exists because a drawing bug is invisible to 1 and 2, and it has earned its
+keep several times over — a band fill that buried every magnet, a comet drawn across the
+picture, a dipole shaded dead while a kicker fired, a cascade drawn three pixels long, a
+collision flashing in a detector with no beam drawn near it.
+
+`check:page` exists because a **layout** bug is invisible even to that: the overlay is HTML
+over the canvas, and no assertion about what the renderer was asked to draw can see one panel
+sitting on another. It caught, on its first run, three cards fighting over one rail with the
+machine readouts crushed to a 115 px scroller, and two more overlaps nobody had noticed.
+
+**When a visual behaviour is requested, add an assertion for it — to `check:render` if it is
+drawn, to `check:page` if it is placed.** Still do not claim a visual result was verified
+without one of these, or a screenshot you actually looked at.
 
 ## Layout
 
@@ -149,8 +167,10 @@ src/render/
   renderer.ts    all drawing of the machine, plus pickMagnet hit testing
   eventDisplay.ts  the r-phi event display, into an experiment's own canvas
 src/ui/          hud.ts, controls.ts, eventPanel.ts, readout.ts, format.ts
-  layout.ts      the few widths the overlay and the camera have to agree on
+  layout.ts      where every overlay box goes, worked out against the camera
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
+  browser/       page.ts, shot.ts, page-check.ts — headless Chrome (node types live here
+                 only; see tsconfig.browser.json)
 docs/            the pages in the table above
 .github/workflows/pages.yml   the three gates, then build and publish to GitHub Pages
 ```
@@ -181,6 +201,9 @@ argued in the page named beside it.
   metres reported somewhere. → `rendering.md`
 - **The ring's dipoles are never touched by an extraction**, in the physics or in the
   drawing. → `beamlines.md`
-- **Anything the user can see is asserted in `check:render`.** → this page, above.
-- **No overlay panel is drawn over the machine.** The camera's margin and the panel widths
-  are one module (`ui/layout.ts`) and the clearance is asserted. → `rendering.md`
+- **Anything the user can see is asserted** — in `check:render` if it is drawn, in
+  `check:page` if it is placed. → this page, above.
+- **No overlay panel is drawn over the machine, and no panel over another panel.** Every box
+  in the overlay is *derived* from where the camera actually put the machine
+  (`Renderer.machineBands` → `ui/layout.ts`), never declared beside it; `check:render` sweeps
+  the arithmetic over window sizes and `check:page` measures the real boxes. → `rendering.md`

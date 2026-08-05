@@ -38,11 +38,13 @@ import {
   poseAtArclength,
 } from '../sim/world';
 import type { BeamLine } from '../sim/line';
+import { sampleLine } from '../sim/line';
 import { TRAIL_STRIDE } from '../sim/backend';
 import type { Arc, Ring, Straight } from '../sim/lattice';
 import type { DamageSite } from '../sim/damage';
 import { DETECTOR_SHELLS, SEGMENT_STRIDE, SPECIES_COUNT } from '../sim/shower';
 import { INSERTION_HALF_LENGTH_F, INSERTION_RADIUS_F } from '../sim/detector';
+import type { MachineBands } from '../ui/layout';
 import { CAMERA_MARGIN } from '../ui/layout';
 import { Camera } from './camera';
 import {
@@ -156,6 +158,8 @@ export interface MagnetPick {
 
 export class Renderer {
   readonly camera = new Camera();
+  /** Cached free bands for the overlay; dropped whenever the camera moves. `machineBands`. */
+  private bands: MachineBands | null = null;
   /** Magnet the pointer is over, for the click affordance. */
   hovered: MagnetPick | null = null;
 
@@ -200,6 +204,7 @@ export class Renderer {
     this.beamCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.beamCtx.clearRect(0, 0, w, h);
     this.lastBeam.clear();
+    this.bands = null;
     // pad by the widest tunnel so no wall is clipped off the edge
     const b = world.bounds;
     const pad = bore(world.collider.ring) * (1 + WALL_F);
@@ -209,6 +214,110 @@ export class Renderer {
       h,
       MARGIN,
     );
+  }
+
+  /**
+   * Right-hand edge of the collider's tunnel wall [CSS px] — **what the overlay has to clear.**
+   *
+   * The panels are HTML over this canvas and nothing but this number relates the two. It is
+   * here rather than in `ui/layout.ts` because it is a fact about the camera, and it is the
+   * camera that changes with the window; the layout asks for it every frame and sizes the
+   * experiments' column from what is left. See `eventCanvasSize`.
+   */
+  colliderRight(world: World): number {
+    const ring = world.collider.ring;
+    return this.camera.x(ring.bounds.maxX + bore(ring) * (1 + WALL_F));
+  }
+
+  /**
+   * The **free bands** the overlay may put cards in, in CSS px. See `ui/layout.ts`.
+   *
+   * A single "the machine ends here" number is the collider's widest point, and using it
+   * everywhere wastes the screen: at the height of the top corner the ring's arc has curved
+   * hundreds of pixels back to the left, and above and below the injector there is a band
+   * running the whole width of the window with nothing in it. That band is where the
+   * experiments' cards go, so what the layout needs is not one edge but three: where the
+   * injector's own band begins and ends, and how far right the machine reaches *above* it and
+   * *below* it.
+   *
+   * Measured off the geometry that is actually drawn — the closed orbit of both rings and
+   * every transfer and dump line, each padded by its own tunnel wall — because a band computed
+   * from bounding boxes would hand the layout space that TI 8 is lying across.
+   */
+  machineBands(world: World): MachineBands {
+    // Walking both closed orbits and four lines is not free, and none of it moves until the
+    // camera does. `resize` drops this.
+    if (this.bands) return this.bands;
+    const { camera } = this;
+    const injector = world.injector.ring;
+    const injectorPad = camera.len(bore(injector) * (1 + WALL_F));
+    // Screen y runs the other way from world y: the ring's highest point is its smallest y.
+    const injectorTop = camera.y(injector.bounds.maxY) - injectorPad;
+    const injectorBottom = camera.y(injector.bounds.minY) + injectorPad;
+
+    // Every drawn point as [right edge, top, bottom] in screen px, so asking "how far right
+    // does the machine reach between these two heights" is one scan.
+    //
+    // Two sets, because the two are not worth the same screen. A **ring** is the thing being
+    // looked at and a card over it is a card over the machine. A **transfer line** is a thin
+    // pipe crossing a corner — TI 8 cuts through the top of the band below the injector on
+    // its way in — and holding a whole card's width off the screen for it costs the readouts
+    // beside it far more than the line loses. So the cards are placed against the rings and
+    // the lines are reported, not obeyed.
+    const rings: number[] = [];
+    const lines: number[] = [];
+    const into = (into_: number[]) => (x: number, y: number, pad: number) => {
+      const half = camera.len(pad);
+      const sy = camera.y(y);
+      into_.push(camera.x(x) + half, sy - half, sy + half);
+    };
+    const consider = into(lines);
+
+    const considerRing = into(rings);
+    for (const machine of world.machines) {
+      // The injector is what *defines* the bands; including it would have every card think
+      // the machine reaches to the middle of the SPS.
+      if (machine === world.injector) continue;
+      const ring = machine.ring;
+      const pad = bore(ring) * (1 + WALL_F);
+      const C = ring.config.circumference;
+      const steps = 720;
+      for (let i = 0; i < steps; i++) {
+        const p = poseAtArclength(ring, (C * i) / steps);
+        considerRing(p.x, p.y, pad);
+      }
+    }
+    for (const e of world.extractions) {
+      const line = e.line;
+      const a = line.config.apertureRadius;
+      const pad = a * (1 + WALL_F);
+      for (const [x, y] of sampleLine(line, line.length / 64)) consider(x, y, pad);
+      // The absorber a dump line ends in is wider and longer than the pipe that feeds it.
+      const { x, y, dx, dy } = line.exit;
+      const halfWidth = a * DUMP_BLOCK_HALF_WIDTH_F;
+      const length = a * DUMP_BLOCK_LENGTH_F;
+      for (const along of [0, length]) {
+        for (const across of [-halfWidth, halfWidth]) {
+          consider(x + dx * along + dy * across, y + dy * along - dx * across, 0);
+        }
+      }
+    }
+
+    const rightIn = (points: number[], top: number, bottom: number): number => {
+      let right = 0;
+      for (let i = 0; i < points.length; i += 3) {
+        if (points[i + 2] > top && points[i + 1] < bottom) right = Math.max(right, points[i]);
+      }
+      return right;
+    };
+
+    this.bands = {
+      injectorTop,
+      injectorBottom,
+      rightIn: (top, bottom) => rightIn(rings, top, bottom),
+      linesRightIn: (top, bottom) => rightIn(lines, top, bottom),
+    };
+    return this.bands;
   }
 
   /** Drops one comet's tail, or every one of them. */

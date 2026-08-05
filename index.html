@@ -15,25 +15,31 @@
         <span class="sub">two beams · filled from the SPS · collided at P3 and P7</span>
       </header>
 
-      <section class="panel panel--beam" id="panel-beam"></section>
-      <section class="panel panel--physics" id="panel-physics"></section>
-      <section class="panel panel--compute" id="panel-compute"></section>
+      <!-- The left-hand rail: what the beam is, what it is doing, and what is computing it.
+           A column rather than three placed panels, because on a short window they would
+           otherwise be laid on top of one another — see `check:page`. -->
+      <aside class="rail rail--left" id="rail-left">
+        <section class="panel panel--beam" id="panel-beam"></section>
+        <section class="panel panel--physics" id="panel-physics"></section>
+        <section class="panel panel--compute" id="panel-compute"></section>
+      </aside>
 
-      <!-- The right-hand rail. The two experiments take its top and bottom corners — above
-           and below the injector, which is the one stretch of picture with nothing in it —
-           and the machine readouts sit between them, on the injector's own level. Neither
-           experiment is there until it has recorded something: an empty box reading "no
+      <!-- The right-hand rail: the machine readouts, and nothing else. POWER is long and a
+           full-height column is the only shape that holds it. -->
+      <aside class="rail" id="rail-right">
+        <section class="panel panel--power" id="panel-power"></section>
+        <section class="panel panel--injector" id="panel-injector"></section>
+      </aside>
+
+      <!-- The experiments, in the free bands above and below the injector — the one stretch
+           of picture with nothing in it. They are placed by `eventCardBoxes` rather than
+           flowed, because where they can go is a fact about where the machine is drawn.
+           Neither is there until it has recorded something: an empty box reading "no
            collisions" is a box holding picture space against the day it has anything to show,
            and a panel that arrives when the beams start colliding says the same thing by
            arriving. -->
-      <aside class="rail" id="rail-right">
-        <section class="panel panel--event" id="panel-ip-a" hidden></section>
-        <div class="rail__mid">
-          <section class="panel panel--power" id="panel-power"></section>
-          <section class="panel panel--injector" id="panel-injector"></section>
-        </div>
-        <section class="panel panel--event" id="panel-ip-b" hidden></section>
-      </aside>
+      <section class="panel panel--event" id="panel-ip-a" hidden></section>
+      <section class="panel panel--event" id="panel-ip-b" hidden></section>
 
       <footer class="controls" id="controls"></footer>
     </div>

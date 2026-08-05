@@ -14,7 +14,15 @@ import { LHC_CONFIG, SPS_CONFIG } from '../src/sim/lattice';
 import { World, poseAtArclength } from '../src/sim/world';
 import { sampleLine } from '../src/sim/line';
 import { SEGMENT_STRIDE, TRACKER_RADIUS } from '../src/sim/shower';
-import { EVENT_CANVAS, eventPanelLeft } from '../src/ui/layout';
+import {
+  EVENT_CANVAS_MAX,
+  EVENT_CANVAS_MIN,
+  OVERHANG_ALLOWED,
+  OVERLAY_GAP,
+  OVERLAY_PADDING,
+  READOUT_COLUMN,
+  eventCardBoxes,
+} from '../src/ui/layout';
 import { CpuBackend } from '../src/sim/backends/cpuBackend';
 import { TRAIL_STRIDE } from '../src/sim/backend';
 
@@ -90,13 +98,13 @@ class MockContext {
   }
 }
 
-function makeCanvas() {
+function makeCanvas(clientWidth = 1280, clientHeight = 860) {
   const ctx = new MockContext();
   return {
     width: 0,
     height: 0,
-    clientWidth: 1280,
-    clientHeight: 860,
+    clientWidth,
+    clientHeight,
     style: {} as Record<string, string>,
     getContext: () => ctx,
     ctx,
@@ -220,17 +228,100 @@ for (const [name, ring] of [['collider', machine.ring], ['injector', injector.ri
 }
 
 // **The overlay must not be drawn on top of the machine.** The panels are HTML over a canvas,
-// so nothing in either file relates the camera's margin to a column width — and it went wrong
-// exactly that way: the experiments' column was put where the collider's right-hand arc
-// already was. Both numbers live in `ui/layout.ts` now and this is what checks them.
+// so nothing in either file relates the camera to a column width — and it went wrong exactly
+// that way: the experiments' column was put where the collider's right-hand arc already was.
+// The geometry lives in `Renderer.machineBands` now and the boxes in `ui/layout.ts`, and this
+// is the arithmetic half of checking them — `check:page` is the half that opens a browser and
+// measures where the cards really landed.
+//
+// Swept over window sizes rather than asserted at one, because none of it is a constant any
+// more: what needs checking is that the arithmetic never runs out of room, and that the
+// picture it leaves is still big enough to read a barrel on.
 {
-  const wall = LHC_CONFIG.apertureRadius * (1 + 0.18);
-  const colliderRight = renderer.camera.x(machine.ring.bounds.maxX + wall);
-  const panelLeft = eventPanelLeft(1280);
+  const sizes: Array<[number, number]> = [
+    [1150, 700],
+    [1280, 860],
+    [1366, 768],
+    [1440, 900],
+    [1600, 900],
+    [1919, 906],
+    [1920, 1080],
+    [2560, 1440],
+  ];
+  // The title and the button bar are measured off the DOM in the app and by `check:page`;
+  // these are pessimistic stand-ins, the bar being two rows tall on a narrow window.
+  const CHROME = { title: 28, controls: 90 };
+  let smallestPicture = Infinity;
+  let biggestPicture = 0;
+  let worstClearance = Infinity;
+  let worstOverhang = 0;
+  /** Window sizes with no room beside the readouts at all, where the card takes the column. */
+  const retreated = new Set<string>();
+  const picturePx = new Map<string, number>();
+  /** Window sizes with no room for a readable card, which get one anyway. */
+  const atFloor = new Set<string>();
+  console.log('   window      band above   band below   card left   picture (top / bottom)');
+  for (const [w, h] of sizes) {
+    const r = new Renderer(makeCanvas(w, h) as unknown as HTMLCanvasElement);
+    r.resize(world);
+    const bands = r.machineBands(world);
+    const {
+      cards: [a, b],
+    } = eventCardBoxes(w, h, bands, CHROME);
+    picturePx.set(`${w}x${h}`, a.canvas);
+    for (const card of [a, b]) {
+      smallestPicture = Math.min(smallestPicture, card.canvas);
+      biggestPicture = Math.max(biggestPicture, card.canvas);
+      // Only where the card had room to be sized at all. A window with no room for a readable
+      // picture gets one anyway and overhangs the arc — stated in `eventCardBoxes`, and the
+      // reason this is measured over the cards that were not forced down to their floor.
+      if (card.canvas > EVENT_CANVAS_MIN) {
+        worstClearance = Math.min(
+          worstClearance,
+          card.left - bands.rightIn(card.top, card.top + card.height),
+        );
+      } else {
+        atFloor.add(`${w}x${h}`);
+        // A floor-sized card in a band with no room for one reaches over the arc. Allowed up
+        // to `OVERHANG_ALLOWED` where the card is still standing beside the readouts; past
+        // that it has fallen back into the column, which is a stated retreat and not a bug.
+        const inColumn = card.left + card.width > w - OVERLAY_PADDING - READOUT_COLUMN;
+        const over = bands.rightIn(card.top, card.top + card.height) + OVERLAY_GAP - card.left;
+        if (inColumn) retreated.add(`${w}x${h}`);
+        else worstOverhang = Math.max(worstOverhang, over);
+      }
+    }
+    console.log(
+      `   ${String(w).padStart(4)}x${String(h).padEnd(5)} ` +
+        `${bands.rightIn(a.top, a.top + a.height).toFixed(0).padStart(10)} ` +
+        `${bands.rightIn(b.top, b.top + b.height).toFixed(0).padStart(12)} ` +
+        `${a.left.toFixed(0).padStart(11)} ${`${a.canvas} / ${b.canvas} px`.padStart(20)}`,
+    );
+  }
+  const colliderRight = renderer.colliderRight(world);
+  const small = picturePx.get('1280x860')!;
+  const large = picturePx.get('1920x1080')!;
   check(
-    'the experiments stand clear of the collider they are drawn beside',
-    colliderRight < panelLeft,
-    `collider tunnel ends at ${colliderRight.toFixed(0)} px, the panels start at ${panelLeft}`,
+    'the experiments stand clear of the machine in their own band, at every window size',
+    worstClearance >= OVERLAY_GAP,
+    `worst clearance ${worstClearance.toFixed(0)} px, wanted ${OVERLAY_GAP}`,
+  );
+  check(
+    'and the picture in them is never below what a barrel is readable at',
+    smallestPicture >= EVENT_CANVAS_MIN && biggestPicture <= EVENT_CANVAS_MAX,
+    `${smallestPicture}..${biggestPicture} px across, allowed ${EVENT_CANVAS_MIN}..${EVENT_CANVAS_MAX}`,
+  );
+  check(
+    'and a wider window spends the room it gains on the picture',
+    large > small,
+    `${small} px across at 1280×860, ${large} px at 1920×1080 (was a flat 196)`,
+  );
+  check(
+    'a card that had to take its floor size still barely touches the machine',
+    worstOverhang <= OVERHANG_ALLOWED,
+    `worst overhang ${worstOverhang.toFixed(0)} px of ${OVERHANG_ALLOWED} allowed` +
+      (atFloor.size > 0 ? `; at its floor on ${[...atFloor].join(', ')}` : '') +
+      (retreated.size > 0 ? `; into the column on ${[...retreated].join(', ')}` : ''),
   );
   // And the injector is the thing they sit above and below rather than on: its own band of
   // screen is what the readouts in the middle of the rail are level with.
@@ -1012,10 +1103,9 @@ console.log('--- the transverse event display ---');
     MUON_STATIONS,
     buildTransverse,
   } = shower;
-  // At the size the panel really gives it, so "too small to resolve" would show up here.
-  const panel = makeCanvas();
-  panel.clientWidth = EVENT_CANVAS;
-  panel.clientHeight = EVENT_CANVAS;
+  // At the **smallest** size the panel ever gives it, so "too small to resolve" shows up here:
+  // the picture grows with the window now, and what has to keep working is the floor.
+  const panel = makeCanvas(EVENT_CANVAS_MIN, EVENT_CANVAS_MIN);
   const display = new EventDisplay(panel as unknown as HTMLCanvasElement);
   const pctx = panel.ctx;
 

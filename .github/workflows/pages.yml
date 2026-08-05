@@ -24,10 +24,15 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # The same three gates a session runs locally: types, physics, drawing.
+      # The same four gates a session runs locally: types, physics, drawing, layout.
+      # `check:page` drives the Chrome that comes with the runner image, headless, and starts
+      # its own Vite server; it needs no display and downloads no browser.
       - run: npm run typecheck
       - run: npm run check
       - run: npm run check:render
+      - run: npm run check:page
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

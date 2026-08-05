@@ -6,14 +6,10 @@ import { webgpuBackendFactory } from './sim/backends/webgpuBackend';
 import { Renderer } from './render/renderer';
 import { Hud } from './ui/hud';
 import { Controls } from './ui/controls';
-import { publishLayout } from './ui/layout';
+import { eventCardBoxes, publishLayout } from './ui/layout';
 
 registerBackend(cpuBackendFactory);
 registerBackend(webgpuBackendFactory);
-
-// The stylesheet's column widths come from `ui/layout.ts`, so that the same numbers the
-// camera is checked against are the ones the panels are actually laid out with.
-publishLayout(document.documentElement);
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 
@@ -23,6 +19,34 @@ const world = new World();
 
 const renderer = new Renderer(canvas);
 const hud = new Hud(world);
+
+/** The overlay's own furniture, and the two cards whose visibility moves the right rail. */
+const titleRoot = document.querySelector('.title') as HTMLElement;
+const cardA = document.getElementById('panel-ip-a')!;
+const cardB = document.getElementById('panel-ip-b')!;
+
+/**
+ * Puts the experiments' cards where the machine leaves room for them.
+ *
+ * The stylesheet's numbers come from `ui/layout.ts` so that the same geometry the camera is
+ * checked against is the geometry the panels are laid out with — and none of them is a
+ * constant, because the room around the machine is a measured quantity that changes with the
+ * window. The button bar's height is measured rather than assumed: it wraps to two rows on a
+ * narrow window and the lower card has to clear whatever it actually became.
+ *
+ * Cheap enough to call every frame: it is a comparison unless something really moved.
+ */
+function fitOverlay(): void {
+  const bands = renderer.machineBands(world);
+  const boxes = eventCardBoxes(
+    canvas.clientWidth,
+    canvas.clientHeight,
+    bands,
+    { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight },
+    [!cardA.hidden, !cardB.hidden],
+  );
+  publishLayout(document.documentElement, boxes, bands);
+}
 
 const trail = new Float32Array(16_384 * TRAIL_STRIDE);
 
@@ -38,7 +62,8 @@ let fps = 60;
  */
 let injectOnBucket = true;
 
-const controls = new Controls(document.getElementById('controls')!, world, {
+const controlsRoot = document.getElementById('controls')!;
+const controls = new Controls(controlsRoot, world, {
   onTogglePause() {
     paused = !paused;
     controls.setPaused(paused);
@@ -93,6 +118,7 @@ async function boot(): Promise<void> {
   // collider is something you do, not something that has already happened.
   world.fillInjector();
   renderer.resize(world);
+  fitOverlay();
   requestAnimationFrame(frame);
 }
 
@@ -102,6 +128,7 @@ function frame(now: number): void {
   fps = fps * 0.9 + (1 / Math.max(dtWall, 1e-4)) * 0.1;
 
   renderer.resize(world);
+  fitOverlay();
 
   let steps = 0;
   const t0 = performance.now();

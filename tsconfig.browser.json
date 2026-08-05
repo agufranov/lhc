@@ -1,0 +1,14 @@
+{
+  // The scripts that drive a real browser (`scripts/browser/`) are the only code here that
+  // runs on node's own APIs — files, paths, a child Vite server. They get node's types; the
+  // app and the headless checks deliberately do not, so that nothing in `src/` can reach for
+  // `fs` and still typecheck. Both configs are run by `npm run typecheck`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["scripts/browser"],
+  // The root config excludes this directory; without clearing that, extending it here would
+  // exclude the very files this config exists to check.
+  "exclude": []
+}
