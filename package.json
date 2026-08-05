@@ -1,0 +1,19 @@
+{
+  "name": "lhc-sim",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check": "esbuild scripts/check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/check.mjs && node node_modules/.cache/check.mjs",
+    "check:render": "esbuild scripts/render-check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/render-check.mjs && node node_modules/.cache/render-check.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
