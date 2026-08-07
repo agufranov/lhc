@@ -45,7 +45,7 @@ import type { DamageSite } from '../sim/damage';
 import { DETECTOR_SHELLS, SEGMENT_STRIDE, SPECIES_COUNT } from '../sim/shower';
 import { INSERTION_HALF_LENGTH_F, INSERTION_RADIUS_F } from '../sim/detector';
 import type { MachineBands } from '../ui/layout';
-import { CAMERA_MARGIN } from '../ui/layout';
+import { CAMERA_MARGIN, LABEL_ROOM } from '../ui/layout';
 import { Camera } from './camera';
 import {
   COLORS,
@@ -150,6 +150,24 @@ const DETECTOR_LAYERS: Array<[number, string, string]> = DETECTOR_SHELLS.map(
 /** How long a collision event display stays on screen [s]. */
 const EVENT_FLASH = 1.1;
 
+/**
+ * How far the picture moves at full shake [css px].
+ *
+ * Small on purpose. The overlay does not shake with it — it cannot, see `render` — so every
+ * pixel of this is a pixel the machine may reach towards a panel, and the layout's own
+ * tolerance for that is `OVERHANG_ALLOWED` = 40. Eight is loud enough to be alarming at 60 fps
+ * and nowhere near enough to put an arc under a card.
+ */
+const SHAKE_PIXELS = 8;
+
+/**
+ * How hard the ground has to be moving before the picture goes red.
+ *
+ * Above what an `alarm` starts at (0.35) and below what a `catastrophe` starts at (1), so the
+ * tint belongs to the catastrophe alone and fades out well before the shake does.
+ */
+const ALARM_TINT_SHAKE = 0.45;
+
 /** Magnet under the pointer. */
 export interface MagnetPick {
   machine: Machine;
@@ -169,6 +187,9 @@ export class Renderer {
   private dpr = 1;
   private cssWidth = 0;
   private cssHeight = 0;
+  /** The overlay furniture the last fit was made against. See `resize`. */
+  private chromeTop = 0;
+  private chromeBottom = 0;
 
   /** Last drawn point per particle, so each comet's tail joins up across frames. */
   private lastBeam = new Map<number, { x: number; y: number }>();
@@ -176,6 +197,8 @@ export class Renderer {
   private grouped = new Map<number, number[]>();
   /** Scratch: how much of each batch is left, by particle id. See `updateBeamLayer`. */
   private intensity = new Map<number, number>();
+  /** Wall seconds of shaking so far — the phase of the wobble, not a physical quantity. */
+  private shakePhase = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -187,15 +210,35 @@ export class Renderer {
     this.beamCtx = bctx;
   }
 
-  resize(world: World): void {
+  /**
+   * Sizes the canvas and fits the machine into what the overlay leaves of the window.
+   *
+   * `chrome` is how far down the title reaches and how far up the button bar does — measured
+   * off the DOM by `main.ts`, because the bar wraps to two rows on a narrow window. It is
+   * **not** decoration to fit inside: the machine's own labels are drawn outside its tunnel
+   * wall, so a ring fitted to the whole window puts S67 and S78 behind the buttons, which is
+   * exactly what it did. The border on a side is therefore whatever that side actually has
+   * over it plus room for a label, and never less than `MARGIN`.
+   */
+  resize(world: World, chrome: { top: number; bottom: number } = { top: 0, bottom: 0 }): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
-    if (w === this.cssWidth && h === this.cssHeight && dpr === this.dpr) return;
+    if (
+      w === this.cssWidth &&
+      h === this.cssHeight &&
+      dpr === this.dpr &&
+      chrome.top === this.chromeTop &&
+      chrome.bottom === this.chromeBottom
+    ) {
+      return;
+    }
 
     this.dpr = dpr;
     this.cssWidth = w;
     this.cssHeight = h;
+    this.chromeTop = chrome.top;
+    this.chromeBottom = chrome.bottom;
     for (const c of [this.canvas, this.beamCanvas]) {
       c.width = Math.max(1, Math.round(w * dpr));
       c.height = Math.max(1, Math.round(h * dpr));
@@ -212,7 +255,12 @@ export class Renderer {
       { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad },
       w,
       h,
-      MARGIN,
+      {
+        left: MARGIN,
+        right: MARGIN,
+        top: Math.max(MARGIN, chrome.top + LABEL_ROOM),
+        bottom: Math.max(MARGIN, chrome.bottom + LABEL_ROOM),
+      },
     );
   }
 
@@ -377,6 +425,24 @@ export class Renderer {
 
   render(world: World, trail: Float32Array, trailCount: number, dtWall: number): void {
     this.drawBackground();
+
+    // **The ground shakes.** Applied to the drawing and to nothing else: the camera is what
+    // `machineBands` derives the overlay from, so shaking *that* would jitter every panel in
+    // the window and could walk a card onto the machine — which is the one thing the layout
+    // is not allowed to do. The background is painted before the translate, or the shake
+    // would drag an unpainted edge across the picture.
+    const shaking = world.shake > 0.002;
+    if (shaking) {
+      this.shakePhase += dtWall;
+      const a = SHAKE_PIXELS * world.shake;
+      const t = this.shakePhase;
+      this.ctx.save();
+      this.ctx.translate(
+        a * Math.sin(t * 91.7) * Math.sin(t * 13.3),
+        a * Math.sin(t * 77.3 + 1.7) * Math.sin(t * 17.9),
+      );
+    }
+
     this.drawChain(world);
 
     for (const machine of world.machines) {
@@ -403,6 +469,31 @@ export class Renderer {
     this.compositeBeam();
     this.drawBeamHeads(world);
     this.drawLabels(world);
+    if (shaking) this.ctx.restore();
+    this.drawAlarmTint(world);
+  }
+
+  /**
+   * The tunnel lights going red.
+   *
+   * Keyed on the **shake** and nothing else, above a threshold only a catastrophe reaches:
+   * an alarm shakes the picture by 0.35 and a catastrophe by 1, so this comes on for the one
+   * and never for the other without needing to know which it was. It used to ask what the
+   * banner was saying, and the banner had already moved on to the fill ending — so the loudest
+   * thing in the machine's repertoire fired for two frames, on the wrong event, or not at all.
+   *
+   * Drawn *outside* the shake so the edges of the window stay covered.
+   */
+  private drawAlarmTint(world: World): void {
+    if (world.shake <= ALARM_TINT_SHAKE) return;
+    const { ctx } = this;
+    const w = this.cssWidth;
+    const h = this.cssHeight;
+    const glow = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.7);
+    glow.addColorStop(0, 'rgba(255, 40, 30, 0)');
+    glow.addColorStop(1, `rgba(255, 30, 24, ${(0.42 * world.shake).toFixed(3)})`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
   }
 
   // --- geometry helpers -----------------------------------------------------
@@ -918,8 +1009,14 @@ export class Renderer {
         const p0 = poseAtArclength(ring, region.s + u0);
         const p1 = poseAtArclength(ring, region.s + u1);
         const inside = collected((p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
-        ctx.strokeStyle = inside ? 'rgba(170, 255, 225, 0.72)' : 'rgba(90, 190, 165, 0.15)';
-        ctx.lineWidth = Math.max(1, camera.len(a * (inside ? 1.9 : 1.2)));
+        // **Beam-coloured, and no wider than the beam is.** This used to be mint green and
+        // `DETECTOR_RADIUS_F` wide, which is exactly the half-height of the drawn detector —
+        // so what the eye got was a green slab filling the experiment's box, a colour nothing
+        // else in the machine uses for a beam and a width that said "this volume is lit"
+        // rather than "these two beams are lying on each other". It is two beams in one pipe,
+        // so it is drawn as the beam is drawn and a little wider than one of them.
+        ctx.strokeStyle = inside ? 'rgba(150, 225, 255, 0.62)' : 'rgba(80, 170, 215, 0.14)';
+        ctx.lineWidth = Math.max(1, camera.len(a * (inside ? 0.95 : 0.7)));
         ctx.beginPath();
         ctx.moveTo(camera.x(p0.x), camera.y(p0.y));
         ctx.lineTo(camera.x(p1.x), camera.y(p1.y));
@@ -936,7 +1033,7 @@ export class Renderer {
     const crossing = world.crossingNearestIP();
     if (crossing) {
       const C = ring.config.circumference;
-      ctx.strokeStyle = 'rgba(150, 225, 210, 0.6)';
+      ctx.strokeStyle = 'rgba(150, 200, 235, 0.6)';
       ctx.lineWidth = Math.max(1, camera.len(a * 0.1));
       for (const s of [crossing.s, crossing.s + C / 2]) {
         const c = poseAtArclength(ring, s);
@@ -965,21 +1062,33 @@ export class Renderer {
     if (world.collisions.length === 0) return;
     const t = now();
     const lines: number[][] = [];
-    const widths: number[] = [0, 0, 0, 0];
-    const alphas: number[] = [];
-    for (let s = 0; s < SPECIES_COUNT; s++) {
-      lines.push([]);
-      alphas.push(0);
-    }
+    for (let s = 0; s < SPECIES_COUNT; s++) lines.push([]);
 
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    // Shared with the transverse display in the experiment's own panel: one collision seen
+    // from two places must be one set of colours. See `SPECIES_STYLE`.
+    const style = SPECIES_STYLE;
+
+    // **One batch per event, not one per species.**
+    //
+    // The fade is a property of an *event* — how long ago that collision was recorded — and
+    // batching every event's segments together by species meant one alpha per species for
+    // the whole picture, taken as the freshest. So a fresh event at one experiment relit the
+    // fading one at the other: both are on screen at once for most of a fade (`EVENT_FLASH`
+    // is forty times the pass that made it), and the far detector visibly flared every time
+    // the near one flashed. Two experiments is at most a handful of events, so a loop over
+    // them costs a few more strokes and gets each one its own age.
     for (const ev of world.collisions) {
       const age = clamp01(1 - (t - ev.at) / (EVENT_FLASH * 1000));
       if (age <= 0.01) continue;
       const machine = world.machines[world.detectors[ev.detector].config.machine];
       const scale = bore(machine.ring) * DETECTOR_RADIUS_F;
+      const width = camera.len(scale * 0.012);
       const ux = ev.dx;
       const uy = ev.dy;
       const shower = ev.event;
+      for (const pts of lines) pts.length = 0;
 
       for (let i = 0; i < shower.count; i++) {
         const o = i * SEGMENT_STRIDE;
@@ -994,27 +1103,20 @@ export class Renderer {
           camera.x(ev.x + ux * x1 - uy * y1),
           camera.y(ev.y + uy * x1 + ux * y1),
         );
-        widths[species] = Math.max(widths[species], camera.len(scale * 0.012));
-        alphas[species] = Math.max(alphas[species], age);
       }
-    }
 
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    // Shared with the transverse display in the experiment's own panel: one collision seen
-    // from two places must be one set of colours. See `SPECIES_STYLE`.
-    const style = SPECIES_STYLE;
-    for (let s = 0; s < SPECIES_COUNT; s++) {
-      const pts = lines[s];
-      if (pts.length === 0) continue;
-      ctx.strokeStyle = `rgba(${style[s][0]}, ${(style[s][2] * alphas[s]).toFixed(3)})`;
-      ctx.lineWidth = Math.max(0.5, widths[s] * style[s][1]);
-      ctx.beginPath();
-      for (let i = 0; i < pts.length; i += 4) {
-        ctx.moveTo(pts[i], pts[i + 1]);
-        ctx.lineTo(pts[i + 2], pts[i + 3]);
+      for (let s = 0; s < SPECIES_COUNT; s++) {
+        const pts = lines[s];
+        if (pts.length === 0) continue;
+        ctx.strokeStyle = `rgba(${style[s][0]}, ${(style[s][2] * age).toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.5, width * style[s][1]);
+        ctx.beginPath();
+        for (let i = 0; i < pts.length; i += 4) {
+          ctx.moveTo(pts[i], pts[i + 1]);
+          ctx.lineTo(pts[i + 2], pts[i + 3]);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     }
 
     // **No vertex glow.** There was one: a green radial gradient most of an aperture across,
@@ -1525,7 +1627,7 @@ export class Renderer {
         if (world.machines[det.config.machine] !== machine) continue;
         const a = bore(machine.ring);
         const colliding = det.collidingPairs > 0;
-        ctx.fillStyle = colliding ? 'rgba(150, 255, 220, 0.95)' : 'rgba(130, 165, 205, 0.75)';
+        ctx.fillStyle = colliding ? 'rgba(160, 225, 255, 0.95)' : 'rgba(130, 165, 205, 0.75)';
         ctx.fillText(
           det.config.name,
           camera.x(det.ip.x + det.ip.dy * a * DETECTOR_RADIUS_F * 1.5),

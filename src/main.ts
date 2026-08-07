@@ -6,7 +6,7 @@ import { webgpuBackendFactory } from './sim/backends/webgpuBackend';
 import { Renderer } from './render/renderer';
 import { Hud } from './ui/hud';
 import { Controls } from './ui/controls';
-import { eventCardBoxes, publishLayout } from './ui/layout';
+import { eventCardBoxes, machineBorders, publishLayout } from './ui/layout';
 
 registerBackend(cpuBackendFactory);
 registerBackend(webgpuBackendFactory);
@@ -42,10 +42,26 @@ function fitOverlay(): void {
     canvas.clientWidth,
     canvas.clientHeight,
     bands,
-    { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight },
+    overlayChrome(),
     [!cardA.hidden, !cardB.hidden],
   );
   publishLayout(document.documentElement, boxes, bands);
+}
+
+/** The title and the button bar, as tall as the browser actually made them. */
+function overlayChrome(): { title: number; controls: number } {
+  return { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight };
+}
+
+/**
+ * Fits the machine, keeping it out from under the title and the buttons.
+ *
+ * The camera is given the same two numbers the overlay's rails start at: a picture centred in
+ * the whole window puts the collider's lowest sector labels behind the button bar, which is
+ * where they were.
+ */
+function fitCamera(): void {
+  renderer.resize(world, machineBorders(overlayChrome()));
 }
 
 const trail = new Float32Array(16_384 * TRAIL_STRIDE);
@@ -53,14 +69,6 @@ const trail = new Float32Array(16_384 * TRAIL_STRIDE);
 let paused = false;
 let lastFrame = performance.now();
 let fps = 60;
-/**
- * Whether an injection waits for the bucket that puts it head-on with the other beam.
- *
- * On by default, because that is what a machine does and because injecting without it
- * produces a filled collider that collides nowhere — which is worth seeing on purpose and
- * confusing to arrive at by accident.
- */
-let injectOnBucket = true;
 
 const controlsRoot = document.getElementById('controls')!;
 const controls = new Controls(controlsRoot, world, {
@@ -73,17 +81,13 @@ const controls = new Controls(controlsRoot, world, {
   },
   onExtract(id) {
     const index = world.lineIndex(id);
-    if (index >= 0) world.armKicker(index, injectOnBucket ? 'bucket' : 'now');
+    if (index >= 0) world.armKicker(index);
   },
   onCog(direction) {
     world.setCogging(direction);
   },
   onAutoCog() {
     world.autoCog();
-  },
-  onToggleTiming() {
-    injectOnBucket = !injectOnBucket;
-    return injectOnBucket;
   },
   onRampUp() {
     world.collider.setTargetEnergy(LHC_CONFIG.topEnergyGeV);
@@ -112,12 +116,25 @@ async function swapBackend(id: string): Promise<void> {
   renderer.clearBeamTrail();
 }
 
+/**
+ * A handle on the running machine, for the browser gates and for anybody with a console open.
+ *
+ * `check:page` forces an incident through this and then asserts what the *page* did about it —
+ * which is the only way to test the alarm banner and the shake, since both are things the DOM
+ * and the canvas do rather than things the physics knows. Nothing in the app reads it back.
+ */
+(window as unknown as { lhc: unknown }).lhc = { world, renderer };
+
 async function boot(): Promise<void> {
+  // Things go wrong on their own in the app, and never in a measurement — see
+  // `IncidentSystem.enabled`. `?quiet=1` is how the browser gates get a machine that will
+  // still be running two colliding beams when they come to measure the overlay.
+  world.incidents.enabled = !new URLSearchParams(location.search).has('quiet');
   world.attachBackend(await cpuBackendFactory.create());
   // The injector starts with a batch in it and the collider starts empty: filling the
   // collider is something you do, not something that has already happened.
   world.fillInjector();
-  renderer.resize(world);
+  fitCamera();
   fitOverlay();
   requestAnimationFrame(frame);
 }
@@ -127,7 +144,7 @@ function frame(now: number): void {
   lastFrame = now;
   fps = fps * 0.9 + (1 / Math.max(dtWall, 1e-4)) * 0.1;
 
-  renderer.resize(world);
+  fitCamera();
   fitOverlay();
 
   let steps = 0;
@@ -144,6 +161,9 @@ function frame(now: number): void {
   renderer.render(world, trail, trailCount, paused ? 0 : dtWall);
 
   hud.update(world, { fps, stepsThisFrame: steps, frameMs: performance.now() - t0 });
+  // Which controls would currently do nothing — the ramps already programmed for the energy
+  // they ask for, cogging with only one beam on the orbit. The kickers are never among them.
+  controls.update(world);
   requestAnimationFrame(frame);
 }
 

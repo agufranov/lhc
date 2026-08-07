@@ -51,18 +51,24 @@ pulse    one arc *plus one kicker* long — the bunch is seen an arc upstream an
 closest approach between the two closed orbits    1250 m
 closest approach between the two transfer lines    730 m (pipes are 66 m)
 23 field sectors, 34 aperture elements
-world extent 12.03 x 10.14 km; collider half-aperture 18.3 px, injector 4.8 px at a
-       CAMERA_MARGIN of 80 (floor asserted: 12)
-overlay at 1280x860   collider tunnel wall ends at 848 px, the experiments' panels start at
-       884, the injector spans x 918..1081 / y 308..469 — so a panel sits above it and a
-       panel below it. check:render asserts the first of those three.
+world extent 12.03 x 10.14 km; collider half-aperture 15.2 px, injector 4.0 px at 1919x906
+       (floor asserted: 12). CAMERA_MARGIN is 80 at the sides; the top and bottom borders are
+       the title and the button bar as measured, plus LABEL_ROOM = 48 for the names drawn
+       outside the tunnel wall — which costs about a sixth of the picture and is what keeps
+       S67, S78 and the second experiment off the buttons.
+overlay at 1280x860   collider tunnel wall ends at 774 px, the experiments' cards start at
+       784, the injector spans x 918..1081 / y 308..469 — so a card sits above it and a
+       card below it. check:render asserts the first of those three.
+event cards at 1919x906   480x241 both, picture 196 px, numbers 120 px beside it. Both
+       pictures are always the same size (check:render asserts it): they are one detector at
+       one radius, read against each other.
 
 shower (one proton)   450 GeV: 373 particles, 192 drawn, 3.06 x 0.25 m, 10 generations
                       6.8 TeV: 471 particles, 192 drawn, 2.87 x 0.03 m, 10 generations
 quench at flat top    a sector takes 15.6 MJ; a 6.8 TeV batch (29 MJ) quenches out to
                       ~160 m from the coil, a 450 GeV batch (1.9 MJ) never does
 
-insertions   IP3 at s = 7230 m, IP7 at s = 20559 m — half a ring apart to 0.000 m
+insertions   ATLAS at P3, s = 7230 m; CMS at P7, s = 20559 m — half a ring apart to 0.000 m
 one batch    234 bunches over 1754 m = 6.6 % of the ring; crossings count within ±877 m
              of an IP, and bunch pairs fall off triangularly to zero there
 nominal fill (12 + 12 batches, every pair head-on, at 6.8 TeV):
@@ -75,10 +81,17 @@ where an event is drawn inside a ±550 m insertion, by where the crossing sits:
              crossing  300 m off ->                      138 m, spread -258..464
              crossing  600 m off ->                      275 m, spread  -31..511
 phasing a fill, through the machine (fill, ramp the injector, extract; injection carries a
-random angle and momentum, so these vary run to run):
-             bucket    held 8.9 s -> crossing -358 m, 138 bunch pairs, L = 5.9e32
-             immediate held 0.3 s -> crossing -5784 m, nothing collides
-             auto-cog  21.7 s from -5784 m -> -1 m, 234 bunch pairs (266 m/s)
+random angle and momentum, so these vary run to run). Injection no longer waits for a phase,
+only for a bucket one of its own is not already in:
+             injected  held 0.25 s -> crossing -5782 m, nothing collides
+             auto-cog  7.2 s from there -> -4 m, 233 bunch pairs, L = 1.0e33, at 450 GeV;
+                       about 2 s at flat top, where the beam is drawn four times faster
+             cogging by hand   268 m of ring per second at injection, 1065 at flat top
+                       (COG_TRIM 4 %; the automatic loop uses COG_TRIM_FAST 14 % until it is
+                       within COG_APPROACH 400 m)
+             World.canCog, which greys the cogging controls out: offered in 1800 of 1800
+                       frames with two beams up. It must not flicker — it is geometric for
+                       the same reason luminosity is
 collision event, r-z view (one inelastic pp interaction, in detector radii):
              900 GeV:   41 primaries, 463 particles, 256 drawn, 1.08 / 0.98 x 0.81
              13.6 TeV:  75 primaries, 467 particles, 256 drawn, 1.08 / 1.07 x 0.94
@@ -97,6 +110,9 @@ the same event, r-phi view (same generator, same seed — check asserts they agr
              tile samplings [GeV]  9 / 7 / 4 — what punched through
 trigger      6+6 batches over 30 s of play: ~15 candidates offered per insertion, 7-9 kept,
              each picked out of ~5e10 interactions. Bar = last kept, decaying to 2 GeV over 4 s
+             The bar is asked of the experiment: TRIGGER_SPECIALTY_GAIN = 1.8 on e/γ at ATLAS
+             and on muons at CMS, so one beam fills the two panels with different physics.
+             The panel names the stream — single-μ, single-e, γ, b-jet, strange, jet.
 burn-off     one head-on pair, intensity of a fresh batch by seconds of play:
              0 s 100.0 %, 30 s 96.5 %, 120 s 87.5 %, 300 s 73.6 % — and gamma never moves
 detectors drawn  82 px long in an 85 px straight, tracker at 0.420 of the radius
@@ -106,4 +122,20 @@ debris load (per insertion, against 1800 W of cryogenics):
              24+24 is 2903 W, over capacity, and quenches. Cooling 40 K -> 2 K: 18 s of play
 hardest object in 400 events at 13.6 TeV:
              pion 45 %, photon 30 %, b/c jet 12 %, kaon 11 %, isolated lepton 3 %, tail 40+ GeV
+mass spectra (a function of ∫L dt alone; 1 step and 1000 steps of the same exposure give an
+identical histogram, which is the frame-rate independence the luminosity also claims):
+             J/ψ 7.8e5 per 0.01 fb⁻¹, Z 8.0e3 — a ratio of 100, which is the real one
+             γγ at 125 GeV: 0.1 fb⁻¹ -> 19 on 181 = 1.4σ; 1 fb⁻¹ -> 187 on 1806 = 4.4σ
+             five sigma at 1.3 fb⁻¹ = 5 min of play at a nominal fill, 1.0 h at one batch
+                       each way. HIGGS_BOOST 4×, so the honest exposure is 5.2 fb⁻¹
+             Υ(2S) and Υ(3S) are drawn as a shoulder on Υ(1S): 72 log bins over 1..200 GeV
+                       are 7.5 % wide and the three states span 10 %
+incidents (MTBF in hours of machine time -> one per N minutes of play at 200×):
+             ufo 20 h / 6 min, rf 35 / 11, vacuum 45 / 13, power 60 / 18, cryo 90 / 27,
+             interconnect 6000 h / 30 h of play. Cool-down 600 s of machine time, and
+             nothing else fires inside it. Off by default; main.ts switches them on
+fill economics (one head-on pair at flat top):
+             lifetime 48 h of machine time, turnaround 15 min -> optimum fill √(τ·T) = 3.4 h
+                       = 1.0 min of play. Real machine: 46 h and 4 h -> 14 h fills
+             20 s of play collected 8.1e-3 fb⁻¹ in 69 min of stable beams, peak 2.0e33
 ```

@@ -86,9 +86,131 @@ body {
 
 .panel--beam,
 .panel--physics,
+.panel--run,
 .panel--compute {
   width: var(--readout-column, 260px);
   flex: 0 0 auto;
+}
+
+/* The machine's own voice, under the title. Fixed height whatever it says: the camera is
+   fitted against the measured height of the title block, so a line that grew when something
+   went wrong would resize the machine every time it spoke. */
+.ticker {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 15px;
+  line-height: 15px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticker.sev-alarm {
+  color: var(--hot);
+}
+
+.ticker.sev-catastrophe {
+  color: #fff;
+  background: rgba(190, 30, 22, 0.85);
+  border-radius: 4px;
+  padding: 0 8px;
+  animation: alarm 0.7s steps(2, end) infinite;
+}
+
+@keyframes alarm {
+  0% { background: rgba(190, 30, 22, 0.85); }
+  100% { background: rgba(120, 12, 8, 0.85); }
+}
+
+/* A plot in a readout column: a canvas with one caption line under it. */
+.plot {
+  margin: 6px 0 2px;
+}
+
+.plot-view {
+  display: block;
+  width: 100%;
+  height: 92px;
+  border: 1px solid rgba(90, 140, 200, 0.14);
+  border-radius: 5px;
+  background: rgba(6, 11, 20, 0.55);
+}
+
+.plot-caption {
+  color: var(--muted);
+  font-size: 10px;
+  padding: 3px 0 1px;
+}
+
+/* The last fill, closed off. An episode wants an end. */
+.report {
+  margin: 8px 0 2px;
+  padding: 7px 8px;
+  border: 1px solid rgba(120, 180, 240, 0.22);
+  border-radius: 6px;
+  background: rgba(30, 52, 82, 0.35);
+}
+
+.report-head {
+  color: #e8f2ff;
+  font-size: 11px;
+  padding-bottom: 4px;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.report-grid b {
+  color: var(--text);
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The chronicle. Five lines, newest last. */
+.log {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.log-line {
+  white-space: normal;
+  line-height: 1.25;
+  padding-left: 6px;
+  border-left: 2px solid rgba(120, 180, 240, 0.25);
+}
+
+.log-line.sev-alarm {
+  color: var(--hot);
+  border-left-color: var(--hot);
+}
+
+.log-line.sev-catastrophe {
+  color: var(--warn);
+  border-left-color: var(--warn);
+}
+
+.log-line.log-press {
+  color: #8f7fb8;
+  border-left-color: rgba(150, 120, 200, 0.5);
+  font-style: italic;
+}
+
+.log-line.log-physics {
+  color: #9ee6b4;
+  border-left-color: rgba(120, 230, 160, 0.6);
 }
 
 /* Both rails: a column of readouts, placed rather than flowed, running from under the title
@@ -330,7 +452,8 @@ body {
   border-color: rgba(120, 180, 240, 0.4);
 }
 
-/* the kickers cannot fire — the button says why on hover */
+/* pressing it would do nothing at all — the button says why on hover, which is why it is
+   this and not `disabled`: a disabled button fires no mouse events and shows no tooltip */
 .control--blocked,
 .control--blocked:hover {
   background: rgba(30, 40, 56, 0.5);

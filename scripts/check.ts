@@ -32,11 +32,14 @@ import {
   BATCH_LENGTH,
   BUNCHES_PER_BATCH,
   CROSSING_RATE,
+  FEMTOBARN_INVERSE,
   INSERTION_COOLING,
   SIGMA_HIGGS,
   SIGMA_INELASTIC,
   TRIGGER_MIN_PT,
 } from '../src/sim/detector';
+import { Analysis, DISCOVERY_SIGMA, HIGGS_BOOST } from '../src/sim/analysis';
+import { INCIDENTS, IncidentSystem } from '../src/sim/incidents';
 
 const ring = buildRing(LHC_CONFIG);
 
@@ -755,55 +758,89 @@ console.log('--- the experiments ---');
   }
 }
 
-// The two phasing controls, end to end, through the real operator path: fill, extract,
-// arrive, capture. This is the check that would have caught reading a line's `bore` as the
-// beam it becomes in the collider — TI 8 leaves the injector forwards and arrives backwards.
+// Phasing, end to end, through the real operator path: fill, extract, arrive, capture, cog.
+// This is the check that would have caught reading a line's `bore` as the beam it becomes in
+// the collider — TI 8 leaves the injector forwards and arrives backwards.
+//
+// **Injection no longer waits for a phase**, so what this measures is the two things left:
+// how long a kicker holds (only ever for a bucket one of its own is already in), and what
+// cogging then does with wherever the batches landed.
 console.log('--- phasing a fill, through the machine ---');
 {
   const dt = 1 / 60;
-  const trial = (timing: 'bucket' | 'now') => {
-    const w = new World();
-    w.attachBackend(new CpuBackend());
-    const run = (s: number) => { for (let i = 0; i < s / dt; i++) w.advance(dt); };
-    let waited = 0;
-    for (const id of ['ti2', 'ti8']) {
-      // Fill *and ramp*: the injector now hands over 450 GeV only after it has been taken
-      // there, and a 26 GeV batch would never be captured by the collider at all.
-      loadInjector(w);
-      run(0.6);
-      const k = w.lineIndex(id);
-      w.armKicker(k, timing);
-      let t = 0;
-      while (w.extractions[k].sent === 0 && t < 20) { w.advance(dt); t += dt; }
-      waited = Math.max(waited, t);
-      run(1.4);
-    }
-    return { w, waited };
-  };
-
-  for (const timing of ['bucket', 'now'] as const) {
-    const { w, waited } = trial(timing);
-    const x = w.crossingNearestIP();
-    const d = w.detectors[0];
-    console.log(
-      `${timing.padEnd(7)}  waited ${waited.toFixed(2)} s  ->  crossing ${
-        x ? `${x.offset.toFixed(0).padStart(6)} m` : '     —'
-      }   ${d.collidingPairs > 0 ? `${d.bunchPairs.toFixed(0)} bunch pairs, L = ${d.luminosity.toExponential(2)}` : 'nothing collides'}`,
-    );
-    if (timing === 'now' && x) {
-      // and this is what the operator does about it
-      w.autoCog();
-      let t = 0;
-      while (w.coggingAuto && t < 40) { w.advance(dt); t += dt; }
-      const y = w.crossingNearestIP();
-      console.log(
-        `         auto-cog ${t.toFixed(1)} s  ->  crossing ${y ? `${y.offset.toFixed(0).padStart(6)} m` : '     —'}` +
-          `   ${w.detectors[0].bunchPairs.toFixed(0)} bunch pairs`,
-      );
-    }
+  const w = new World();
+  w.attachBackend(new CpuBackend());
+  const run = (s: number) => { for (let i = 0; i < s / dt; i++) w.advance(dt); };
+  let waited = 0;
+  for (const id of ['ti2', 'ti8']) {
+    // Fill *and ramp*: the injector now hands over 450 GeV only after it has been taken
+    // there, and a 26 GeV batch would never be captured by the collider at all.
+    loadInjector(w);
+    run(0.6);
+    const k = w.lineIndex(id);
+    w.armKicker(k);
+    let t = 0;
+    while (w.extractions[k].sent === 0 && t < 20) { w.advance(dt); t += dt; }
+    waited = Math.max(waited, t);
+    run(1.4);
   }
-  console.log('injection lands on a grid (the LHC is very nearly 27/7 of the SPS), so it buys');
-  console.log('collisions and not the peak; cogging is what takes the rest of the offset out.');
+
+  const x = w.crossingNearestIP();
+  const d = w.detectors[0];
+  console.log(
+    `injected  waited ${waited.toFixed(2)} s  ->  crossing ${
+      x ? `${x.offset.toFixed(0).padStart(6)} m` : '     —'
+    }   ${d.collidingPairs > 0 ? `${d.bunchPairs.toFixed(0)} bunch pairs, L = ${d.luminosity.toExponential(2)}` : 'nothing collides'}`,
+  );
+  if (x) {
+    // and this is what the operator does about it
+    w.autoCog();
+    let t = 0;
+    while (w.coggingAuto && t < 40) { w.advance(dt); t += dt; }
+    const y = w.crossingNearestIP();
+    console.log(
+      `          auto-cog ${t.toFixed(1)} s  ->  crossing ${y ? `${y.offset.toFixed(0).padStart(6)} m` : '     —'}` +
+        `   ${w.detectors[0].bunchPairs.toFixed(0)} bunch pairs, L = ${w.detectors[0].luminosity.toExponential(2)}`,
+    );
+  }
+  // What the operator's own control does with a second of holding, at both energies. The
+  // crossing point moves at half the slip, and the slip is a fraction of a revolution — so
+  // this is four times faster at flat top, where the beam is drawn going four times faster.
+  for (const top of [false, true] as const) {
+    if (top) {
+      w.collider.setTargetEnergy(LHC_CONFIG.topEnergyGeV);
+      for (let t = 0; t < 60 && w.collider.isRamping; t += dt) w.advance(dt);
+    }
+    const before = w.crossingNearestIP();
+    w.setCogging(1);
+    run(1);
+    const after = w.crossingNearestIP();
+    w.setCogging(0);
+    console.log(
+      `          cogging by hand at ${top ? 'flat top ' : 'injection'} ` +
+        `${before && after ? `${Math.abs(after.offset - before.offset).toFixed(0)} m of ring per second` : '—'}`,
+    );
+  }
+  // `canCog` is what greys the cogging controls out, asked once a frame — so it must not
+  // flicker. It is deliberately geometric (`gatherBunches` asks where a particle is, not which
+  // ring's RF is holding it), because the capture question does flicker: a batch passing the
+  // mouth of a transfer line is claimed by it for a frame or two. This is the assertion that
+  // the geometric one does not.
+  {
+    let dead = 0;
+    const frames = Math.round(30 / dt);
+    for (let i = 0; i < frames; i++) {
+      w.advance(dt);
+      if (!w.canCog) dead++;
+    }
+    console.log(
+      `          two beams up: cogging offered in ${frames - dead} of ${frames} frames ` +
+        `(the control greys out on the other ${dead})`,
+    );
+  }
+  console.log('a pulse fires as soon as it may — the phases injection can reach are a 430 m');
+  console.log('grid and hunting it was seconds of dead time — so cogging does all the aiming,');
+  console.log('and the automatic loop runs a harder slip until it is close (COG_TRIM_FAST).');
 }
 
 console.log('--- the event one collision makes ---');
@@ -1063,6 +1100,219 @@ console.log('--- burn-off: the beam thins, and does not soften ---');
   console.log(' two protons leave the machine per inelastic interaction and nothing puts them');
   console.log(' back. What a burning fill loses is population: the protons still in it are');
   console.log(' exactly as energetic, which is why it is drawn thinner and not slower.');
+}
+
+// What the running is *for*. Everything here is a function of one number — the integrated
+// luminosity — and of nothing else, which is the same claim the luminosity itself makes.
+console.log('--- the mass spectra: what a run turns into ---');
+{
+  const a = new Analysis();
+  const fb = (x: number) => x * FEMTOBARN_INVERSE;
+
+  // The peaks land where the particles are. A bin whose centre is nearest the mass must be
+  // the tallest bin in its neighbourhood, or the plot is drawing something else.
+  // The bin a resonance's mass falls in must stand over both of its neighbours. Asked of the
+  // *immediate* neighbours and not of a window: the three Υ states are within 10 % of each
+  // other and ψ′ sits on the J/ψ's shoulder, so a window test would ask each of them to be
+  // the tallest thing near a much bigger peak and would fail on real physics.
+  let misplaced = '';
+  a.integrated = fb(0.05);
+  const bins = a.dimuon.at(a.integrated);
+  const binOf = (mass: number): number => {
+    for (let i = 0; i < a.dimuon.binCount; i++) {
+      if (mass >= a.dimuon.edges[i] && mass < a.dimuon.edges[i + 1]) return i;
+    }
+    return -1;
+  };
+  let unresolved = '';
+  for (const source of a.dimuon.sources) {
+    if (source.mass === 0) continue;
+    const i = binOf(source.mass);
+    if (i <= 0 || i >= a.dimuon.binCount - 1) continue;
+    // A state sitting within a bin or two of a bigger one is *drawn* as a shoulder on it and
+    // cannot be a peak of its own — which is what a plot at this resolution really looks
+    // like. The three Υ states are inside 10 % of each other and this plot's bins are 7.5 %
+    // wide; resolving them wants 270 bins in 240 px. Reported, not failed.
+    const crowded = a.dimuon.sources.some(
+      (other) => other !== source && other.sigma > source.sigma && Math.abs(binOf(other.mass) - i) <= 2,
+    );
+    if (bins[i] >= bins[i - 1] && bins[i] >= bins[i + 1]) continue;
+    if (crowded) unresolved += ` ${source.name}`;
+    else misplaced += ` ${source.name}`;
+  }
+  console.log(
+    ` every resonance is a peak in its own bin  ${misplaced === '' ? 'yes' : `NO —${misplaced}`}` +
+      `  (J/ψ 3.097, ψ′ 3.686, Υ 9.460 / 10.023 / 10.355, Z 91.19 GeV — the real masses)`,
+  );
+  if (unresolved !== '') {
+    console.log(
+      `   drawn as a shoulder on a bigger neighbour at 72 log bins:${unresolved}` +
+        ' — which is what this resolution really gives',
+    );
+  }
+
+  console.log(' exposure      J/ψ        Z       Z/(J/ψ)   γγ excess at 125 GeV');
+  for (const x of [0.01, 0.1, 0.5, 1, 3]) {
+    a.integrated = fb(x);
+    const jpsi = a.dimuon.expected('jpsi', a.integrated);
+    const z = a.dimuon.expected('z', a.integrated);
+    const w = a.higgsWindow;
+    console.log(
+      ` ${`${x} fb-1`.padStart(9)}  ${jpsi.toExponential(1).padStart(8)} ${z
+        .toExponential(1)
+        .padStart(8)}   ${(z / jpsi).toExponential(1)}   ` +
+        `${w.signal.toFixed(0).padStart(5)} on ${w.background.toFixed(0).padStart(6)} = ${w.sigma
+          .toFixed(1)
+          .padStart(4)} σ`,
+    );
+  }
+
+  // Where the discovery lands, in exposure and in play time. The second number is the one
+  // that says whether this is a session's worth of running or a week's.
+  const probe = new Analysis();
+  let found = 0;
+  for (let x = 0.001; x < 50 && found === 0; x *= 1.02) {
+    probe.integrated = fb(x);
+    if (probe.higgsWindow.sigma >= DISCOVERY_SIGMA) found = x;
+  }
+  // A nominal fill is 1.2e34 per insertion and the analysis combines both, on the machine
+  // clock — which runs 200× wall.
+  const nominalPlay = fb(found) / (2 * 1.2e34) / 200;
+  const onePlusOne = fb(found) / (2 * 9.0e32) / 200;
+  console.log(
+    ` five sigma at ${found.toFixed(2)} fb⁻¹` +
+      ` — ${(nominalPlay / 60).toFixed(0)} min of play at a nominal fill,` +
+      ` ${(onePlusOne / 3600).toFixed(1)} h at one batch each way`,
+  );
+  console.log(
+    ` HIGGS_BOOST is ${HIGGS_BOOST}×, so the honest exposure would be ` +
+      `${(found * HIGGS_BOOST).toFixed(1)} fb⁻¹ — which is the real order of the real discovery.`,
+  );
+
+  // **The spectrum is a function of the exposure and of nothing else.** Same total ∫L handed
+  // over in one step and in a thousand has to give the same histogram, or this is an
+  // accumulator with a frame-rate dependence in it, which is the bug the luminosity
+  // computation exists to avoid.
+  const oneStep = new Analysis();
+  oneStep.advance(1e34, 1000);
+  const many = new Analysis();
+  for (let i = 0; i < 1000; i++) many.advance(1e34, 1);
+  const A = oneStep.dimuon.at(oneStep.integrated);
+  const B = many.dimuon.at(many.integrated);
+  let worst = 0;
+  for (let i = 0; i < A.length; i++) worst = Math.max(worst, Math.abs(A[i] - B[i]));
+  console.log(
+    ` 1 step vs 1000 steps of the same ∫L  ${worst < 1e-6 ? 'identical' : `DIFFER by ${worst}`}` +
+      '  (it is computed from ∫L, never accumulated per frame)',
+  );
+}
+
+// The things that go wrong on their own. Each one is forced and its stated effect checked,
+// because an incident that says it dumped the beam and did not is a cutscene.
+console.log('--- incidents ---');
+{
+  const perPlayHour = (mtbf: number) => 3600 / (mtbf * 3600 / 200);
+  for (const def of INCIDENTS) {
+    const w = new World();
+    w.attachBackend(new CpuBackend());
+    // Two batches at flat top, which is the state most of them are conditioned on.
+    const ip = w.detectors[0].s;
+    for (const bore of [1, -1] as const) {
+      const p = poseAtArclength(w.collider.ring, ip);
+      w.beam.inject({
+        x: p.x, y: p.y, dx: p.dx * bore, dy: p.dy * bore,
+        gamma: w.collider.gamma, protons: PROTONS_PER_BATCH, ring: 0,
+      });
+    }
+    w.attachBackend(new CpuBackend());
+    for (let i = 0; i < w.beam.count; i++) w.beam.ring[i] = 0;
+    w.collider.setTargetEnergy(LHC_CONFIG.topEnergyGeV);
+    for (let i = 0; i < 4000 && w.collider.isRamping; i++) w.advance(1 / 60);
+
+    const armed = () => w.extractions.filter((e) => e.line.config.id.startsWith('td') && e.state !== 'idle').length;
+    const off = () => w.collider.circuits.filter((c) => !c.enabled).length;
+    const down = () => w.collider.circuits.filter((c) => c.isDown).length;
+    const before = { armed: armed(), off: off(), down: down(), vacuum: w.vacuumFactor };
+    const fires = def.when(w);
+    w.forceIncident(def.id);
+    const did: string[] = [];
+    if (armed() > before.armed) did.push('dumped the beams');
+    if (off() > before.off) did.push(`tripped ${off() - before.off} circuit off`);
+    if (down() > before.down) did.push(`quenched ${down() - before.down}`);
+    if (w.vacuumFactor > before.vacuum) did.push(`vacuum ×${w.vacuumFactor.toFixed(0)}`);
+    if (w.shake > 0.5) did.push('shook the ground');
+    console.log(
+      ` ${def.id.padEnd(13)} MTBF ${String(def.mtbfHours).padStart(4)} h of machine time` +
+        ` = one per ${(1 / perPlayHour(def.mtbfHours) * 60).toFixed(0)} min of play` +
+        `  ${fires ? '' : '[not armed here] '}-> ${did.join(', ') || 'NOTHING — an incident must do something'}`,
+    );
+  }
+  // One at a time: two alarms in the same second read as a bug rather than as bad luck.
+  const w = new World();
+  w.attachBackend(new CpuBackend());
+  w.incidents.enabled = true;
+  w.forceIncident('rf');
+  let extra = 0;
+  for (let i = 0; i < 60 * 20; i++) {
+    const n = w.incidents.fired.length;
+    w.advance(1 / 60);
+    extra += w.incidents.fired.length - n;
+  }
+  console.log(
+    ` cool-down ${IncidentSystem.COOLDOWN} s of machine time — ${extra} more in the ` +
+      `${((60 * 20) / 60 * 200 / 60).toFixed(0)} min of machine time after one` +
+      `${extra === 0 ? ' (as it must be)' : ' — COOLDOWN LEAKED'}`,
+  );
+  console.log(' rates are the real machine\'s order: a UFO dumps the LHC a couple of dozen times');
+  console.log(' a year against ~1500 h of stable beams, and RF and cryogenics are next after it.');
+}
+
+// A fill from beam to dump, and the one calculation that says when to end it.
+console.log('--- a fill, and when to dump it ---');
+{
+  const w = new World();
+  w.attachBackend(new CpuBackend());
+  const ip = w.detectors[0].s;
+  for (const bore of [1, -1] as const) {
+    const p = poseAtArclength(w.collider.ring, ip);
+    w.beam.inject({
+      x: p.x, y: p.y, dx: p.dx * bore, dy: p.dy * bore,
+      gamma: w.collider.gamma, protons: PROTONS_PER_BATCH, ring: 0,
+    });
+  }
+  w.attachBackend(new CpuBackend());
+  for (let i = 0; i < w.beam.count; i++) w.beam.ring[i] = 0;
+  for (let i = 0; i < 60 * 20; i++) w.advance(1 / 60);
+
+  const tau = w.beamLifetime;
+  const T = w.turnaround;
+  const optimum = w.optimumFillLength;
+  console.log(
+    ` one head-on pair: lifetime ${(tau / 3600).toFixed(0)} h of machine time,` +
+      ` turnaround ${(T / 60).toFixed(0)} min ->`,
+  );
+  console.log(
+    `   optimum fill ${(optimum / 3600).toFixed(1)} h = ${(optimum / 200 / 60).toFixed(1)} min of play` +
+      `  ${Math.abs(optimum - Math.sqrt(tau * T)) < 1 ? '(√(τ·T), the standard result)' : 'FORMULA MISMATCH'}`,
+  );
+  console.log(
+    `   the real machine: 46 h lifetime, 4 h turnaround -> ` +
+      `${(Math.sqrt(46 * 4)).toFixed(0)} h fills, which is what it runs`,
+  );
+
+  // The fill closes when the beam goes, and the report is what was collected.
+  w.dumpBeams('operator dump');
+  for (let i = 0; i < 60 * 30 && w.fill !== null; i++) w.advance(1 / 60);
+  const report = w.fillHistory[w.fillHistory.length - 1];
+  if (!report) {
+    console.log(' fill never closed — the dump did not take the beam out');
+  } else {
+    console.log(
+      ` fill ${report.index}: ${report.reason}, ${(report.integrated / FEMTOBARN_INVERSE).toExponential(2)} fb⁻¹` +
+        ` in ${(report.stableSeconds / 60).toFixed(0)} min of stable beams,` +
+        ` peak ${report.peakLuminosity.toExponential(2)} cm⁻²s⁻¹`,
+    );
+  }
 }
 
 function si(joules: number): string {

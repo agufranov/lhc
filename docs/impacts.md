@@ -76,3 +76,12 @@ coil would take it down. Heating one dipole's 27.5 t instead of the string's 423
 one-line change that would do it; it is not made because it also deletes the deliberate
 "survivable at injection, fatal at flat top" behaviour the load line exists for. That is a
 balance decision, not an oversight.
+
+## Quenches that no beam caused
+
+Not every quench here comes from a hit any more. A cryogenics fault takes a sector down with no
+loss at all, a power glitch trips a circuit off with beam still in it, and the 2008 interconnect
+failure takes three sectors and the beams together. All of them reach for the machinery on this
+page — `MagnetCircuit.quench`, `deposit`, `enabled` — and none of them adds any: an incident that
+needs new machinery is a cutscene. What they are, how often, and why they are switched off in a
+headless run: `running.md`.

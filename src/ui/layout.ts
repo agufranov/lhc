@@ -58,13 +58,22 @@ export const READOUT_COLUMN = 260;
  *
  *     148 → 294    170 → 277    190 → 240    210 → 221    240 → 221    280 → 165
  *
- * 210 is the near end of the plateau: wide enough that the values stop wrapping raggedly,
- * narrow enough to leave the picture the rest. The height is a measured constant and
- * `check:page` asserts it against the real DOM, because it moves whenever a row's wording or
- * the panel's font does.
+ * Those were measured against five values that each wrapped to two or three lines. They are
+ * one line each now and the column measures **120 px** at 248 wide, which is well under the
+ * picture beside it — so a card is as tall as its picture and no taller, which is what it
+ * should have been all along.
+ *
+ * 210 was the near end of that plateau. It is **248** now, and the height that goes with it
+ * is far below the numbers above, because both moved at once: the rows were shortened (five
+ * values that each fitted one line, and a one-line legend instead of three) and the column
+ * was widened to hold them. A card is wider and shorter for it, which is what it should be —
+ * it is a picture with its numbers beside it, and the numbers are a caption.
+ *
+ * The height is a measured constant and `check:page` asserts it against the real DOM, because
+ * it moves whenever a row's wording or the panel's font does.
  */
-export const EVENT_SIDE = 210;
-export const EVENT_SIDE_HEIGHT = 221;
+export const EVENT_SIDE = 248;
+export const EVENT_SIDE_HEIGHT = 120;
 export const EVENT_PANEL_CHROME = 12 + 12 + 12 + EVENT_SIDE;
 
 /**
@@ -73,11 +82,15 @@ export const EVENT_PANEL_CHROME = 12 + 12 + 12 + EVENT_SIDE;
  * The floor is what the whole barrel — twenty-two layers — stays resolvable at, and it is
  * also the size every assertion in `check:render` was written against: a window with no room
  * for it is a window the card is allowed to overhang, because a card too small to read is
- * worse than a card slightly over the machine. The ceiling is a taste judgement and the only
- * one here — past it a single collision is swelling to fill a 4K screen.
+ * worse than a card slightly over the machine.
+ *
+ * The ceiling is a taste judgement and the only one here. It was 320, which let a card grow
+ * to nearly four hundred pixels tall on a big screen and stand over most of a band; a
+ * collision does not become more legible for being swelled to fill a 4K screen, and the
+ * height it costs is height the card is *placed* against.
  */
 export const EVENT_CANVAS_MIN = 196;
-export const EVENT_CANVAS_MAX = 320;
+export const EVENT_CANVAS_MAX = 240;
 
 /**
  * Empty border the machine is fitted inside [CSS px].
@@ -88,6 +101,18 @@ export const EVENT_CANVAS_MAX = 320;
  * clearance that leaves is asserted, not assumed.
  */
 export const CAMERA_MARGIN = 80;
+
+/**
+ * Room kept outside the tunnel wall for the machine's own labels [CSS px].
+ *
+ * The sector names, the point names and the experiments are drawn 34–40 px *outside* the
+ * ring, so they are not inside the bounds the camera fits — a fit that only clears the
+ * tunnel puts them under whatever the overlay has at that edge. This is that overhang plus
+ * the height of the type, and `Renderer.resize` adds it to the title above the picture and
+ * the button bar below it. Before it existed the bottom of the collider — S67, S78, and the
+ * second experiment with it — sat behind the buttons on any window under about 1000 px.
+ */
+export const LABEL_ROOM = 48;
 
 /**
  * Everything above the picture in a card and below it: the heading and the panel's padding.
@@ -202,15 +227,21 @@ export function eventCardBoxes(
   const columnLeft = width - OVERLAY_PADDING - READOUT_COLUMN;
   const windowRight = width - OVERLAY_PADDING;
 
-  const card = (bandTop: number, bandBottom: number, anchor: 'top' | 'bottom'): CardBox => {
+  const card = (
+    bandTop: number,
+    bandBottom: number,
+    anchor: 'top' | 'bottom',
+    /** Forced picture size, for the second pass that makes the two cards agree. */
+    fixedCanvas?: number,
+  ): CardBox => {
     const fit = (right: number, strip: [number, number]): CardBox => {
       const wide = right - (bands.rightIn(...strip) + OVERLAY_GAP) - EVENT_PANEL_CHROME;
       const tall = bandBottom - bandTop - EVENT_CARD_CHROME;
       // Floor, not round: rounding up borrows the half pixel from the clearance, which is the
       // one thing this function exists to protect.
-      const canvas = Math.floor(
-        Math.max(EVENT_CANVAS_MIN, Math.min(EVENT_CANVAS_MAX, wide, tall)),
-      );
+      const canvas =
+        fixedCanvas ??
+        Math.floor(Math.max(EVENT_CANVAS_MIN, Math.min(EVENT_CANVAS_MAX, wide, tall)));
       // As tall as the taller of its two columns. The numbers win on a small picture, which
       // is the whole reason `EVENT_SIDE_HEIGHT` exists.
       const box = {
@@ -242,9 +273,22 @@ export function eventCardBoxes(
     return overhang <= OVERHANG_ALLOWED ? wide : beside(windowRight);
   };
 
-  const cards: [CardBox, CardBox] = [
+  const first: [CardBox, CardBox] = [
     card(OVERLAY_PADDING, bands.injectorTop - OVERLAY_GAP, 'top'),
     card(bands.injectorBottom + OVERLAY_GAP, height - railBottom, 'bottom'),
+  ];
+
+  // **Both pictures at one size, which is both at the smaller.**
+  //
+  // They used to be sized independently — each as big as its own corner allowed — and that is
+  // wrong for what they are: two views of the same detector at the same radius, read one
+  // against the other. At different sizes the same 11 m barrel is two different circles, and
+  // a track that reaches the muon chambers in one panel looks longer than the one that does
+  // in the other. A scale that means something has to be the same scale in both.
+  const canvas = Math.min(first[0].canvas, first[1].canvas);
+  const cards: [CardBox, CardBox] = [
+    card(OVERLAY_PADDING, bands.injectorTop - OVERLAY_GAP, 'top', canvas),
+    card(bands.injectorBottom + OVERLAY_GAP, height - railBottom, 'bottom', canvas),
   ];
 
   // A card that had to fall back into the column is standing where the readouts would be, so
@@ -265,6 +309,20 @@ export function eventCardBoxes(
         ? Math.max(railBottom, height - cards[1].top + OVERLAY_GAP)
         : railBottom,
     },
+  };
+}
+
+/**
+ * The borders the machine must keep clear at the top and bottom of the window.
+ *
+ * The same two numbers the rails start at, because they are the same fact: the title reaches
+ * this far down and the buttons that far up, and neither the panels nor the machine may be
+ * under them. `Renderer.resize` adds `LABEL_ROOM` on top.
+ */
+export function machineBorders(chrome: OverlayChrome): { top: number; bottom: number } {
+  return {
+    top: OVERLAY_PADDING + chrome.title + OVERLAY_GAP,
+    bottom: OVERLAY_PADDING + chrome.controls + OVERLAY_GAP,
   };
 }
 

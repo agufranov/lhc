@@ -17,8 +17,15 @@ bunches meet where their arclengths agree, at `(s₁+s₂)/2` — a quantity def
 so there are two meeting points per turn and they are always antipodal. One phase adjustment
 therefore serves both, which is why ATLAS (P1) and CMS (P5) face each other on the real ring.
 Here P1/P5 are taken (beam 1 injects at P2, beam 2 arrives at P8, both dumps leave P5), and
-**P3 and P7 are the only free antipodal pair**. They are named for their points, not for the
-real experiments, because they are not standing where those stand.
+**P3 and P7 are the only free antipodal pair**.
+
+**They are ATLAS and CMS standing at the wrong addresses, and the address is the only thing
+faked.** An unnamed box identifies nothing and cannot: the two general-purpose experiments are
+two particular machines, built around different things, and that difference is the reason
+there are two of them — so it is modelled (see the trigger, below) and it needs the names to
+mean anything. What cannot be had is their points, which are taken. Both are drawn and printed
+with their point beside them — `ATLAS · P3`, `CMS · P7` — so nothing is hidden. See
+`docs/limits.md`.
 
 **A macro-particle is 1754 m long, and that is what makes the whole thing tractable.** One
 batch is 234 bunches at 25 ns. Two batches therefore do not meet at a point: every bunch of
@@ -40,7 +47,7 @@ whether the frames land on it depends on the frame rate. Measured — a nominal 
 form is exact and is what a real machine quotes anyway. The geometric test survives for one
 job: deciding when to draw an event, which *should* happen in bursts.
 
-## Burn-off is the only thing that consumes beam, and it takes population only
+## Burn-off is what consumes beam, and it takes population only
 
 Two protons leave the machine per inelastic interaction and nothing puts them back, which
 gives a 46 h fill lifetime on the **machine** clock — about a quarter of an hour of play, and
@@ -57,6 +64,13 @@ would be saying the collisions had softened it, which is the one thing they do n
 Floored well above zero (`0.34 + 0.66 f` on width): a batch burned down to a tenth is still a
 batch and still has to be findable on the ring. The number itself is in the HUD; this is the
 shape of it.
+
+**One other thing consumes beam, and it obeys the same rule.** A vacuum incident — beam–gas
+scattering — multiplies the loss rate for a while (`World.vacuumFactor`), which is a real
+mechanism and takes population in exactly the same way: the protons still going round are
+exactly as energetic, and nothing about the drawing changes. It is also what makes "when do I
+dump this fill" a question with a different answer on different fills. See `running.md`, which
+is also where the lifetime this implies gets turned into an optimum fill length.
 
 **Whether two beams collide is a question about geometry, not about capture.** `gatherBunches`
 asks where a particle is, not which ring's RF is holding it. Asking about capture made the
@@ -93,38 +107,48 @@ at all. Cooling back from 40 K takes 18 s of play.
 
 ## Phasing: how the beams are made to meet where the experiments are
 
-The crossing point is set by the relative phase of the two beams, and there are two controls
-because there have to be. Neither is sufficient.
+The crossing point is set by the relative phase of the two beams. **One control does it, and
+it is cogging** — injection used to hold for a phase as well, and no longer does.
 
-**Bucket-timed injection** (`armKicker(i, 'bucket')`, the default). An armed pulse holds until
-firing would deliver the batch head-on with something already circulating. The test is local
-and exact: every particle here covers the same path length per unit time, so as the bunch
-closes on the kicker its remaining flight shortens by exactly as much as its target moves, and
-the crossing point does not drift. Waiting does nothing — **waiting a whole injector turn**
-moves it by one injector circumference, and that is the only lever.
+**Why injection does not aim any more.** The phase a batch can be delivered at is quantised.
+Nothing that happens while the bunch is in flight can change where it will meet the other beam
+— every particle here covers the same path length per unit time, so as the bunch closes on the
+kicker its remaining flight shortens by exactly as much as its target moves — and the only
+lever is which pass of the injector to fire on. Waiting a whole injector turn steps the
+eventual crossing point by one injector circumference, so the reachable phases are a **grid,
+about 430 m across**. That is a real number: it is what the LHC being very nearly 27/7 of the
+SPS does, and it is why the two machines' RF is locked rather than left to chance.
 
-So the reachable phases are a **grid, about 430 m across**, and that is a real number: it is
-what the LHC being very nearly 27/7 of the SPS does, and it is why the two machines' RF is
-locked rather than left to chance. Injection therefore cannot promise head-on and must not
-pretend to — insisting on ±247 m meant hunting the grid for up to thirty injector turns,
-measured at 13 s of the machine visibly doing nothing. It promises **collisions**: the window
-relaxes from 0.3 to 0.9 of a half-batch over 5 s. Measured: 1–9 s of holding, landing 130–860 m
-off, which is 15–85 % of head-on.
+Hunting a grid that coarse is a lottery and it was one: measured, the same fill held 1.2 s once
+and 8.9 s the next time, up to 13 s when the window was tight, with the machine visibly doing
+nothing and the readout unable to say why. What it bought — landing inside the batch overlap —
+is a second of cogging at flat top. So the pulse fires as soon as it may: measured, **0.25 s**,
+against 1–9 s. The batch lands wherever the grid put it, typically kilometres from an IP, and
+the operator cogs it on.
 
-**A batch must also not land on top of one of its own.** A batch is 1754 m long, so two of
-them less than that apart are the same stretch of beam. Without that rule every batch after
-the first was phased against the *same* partner, so a fill went into one bucket, and one dump
-pulse took all of it. `bucketState` holds for separation as well as for phase, and unlike the
-phase window that one never relaxes — landing off the bucket costs luminosity and cogging can
-take it back; landing on top of a circulating batch cannot be undone by anything. This is what
-a filling scheme is.
+**One thing injection still holds for: a batch must not land on top of one of its own.** A
+batch is 1754 m long, so two of them less than that apart are the same stretch of beam. Without
+that rule every batch after the first landed at the same place in the ring, a fill went into
+one bucket, and one dump pulse took all of it. `bucketState` tests exactly that, and unlike the
+phase it never relaxes — landing off the bucket costs luminosity and cogging takes it back;
+landing on top of a circulating batch cannot be undone by anything. This is what a filling
+scheme is.
 
-**Cogging** takes the rest out. It trims one beam's revolution frequency, which is the only
+**Cogging** does all the aiming. It trims one beam's revolution frequency, which is the only
 way to move where two beams meet; a slip of `u` metres moves the crossing by u/2. Measured at
-`COG_TRIM` = 4 %: 272 m of ring per second at injection and 1072 m at flat top — the beam is
-drawn going four times faster there — so 877 m in under a second at flat top and the whole
-ring in twelve. `autoCog()` walks it on and stops, and its stopping threshold is derived from
-one frame of its own motion rather than fixed, or it works at one energy only.
+`COG_TRIM` = 4 %: 268 m of ring per second at injection and 1065 m at flat top — the beam is
+drawn going four times faster there.
+
+`autoCog()` walks it on and stops, and it has to cross more ring than it used to: the crossing
+point can start anywhere on the half-ring it is defined over, measured at 5.8 km. At the
+operator's trim that is 22 s at injection energy, which is the dead time the phase hunt was
+removed for, moved one control along. So the loop runs a harder slip — `COG_TRIM_FAST` = 14 %
+— until it is within `COG_APPROACH` = 400 m, and then drops to `COG_TRIM` for the approach,
+because a frame of its own motion is the finest it can aim. Measured, worst case: **7.2 s at
+injection energy, about two at flat top.** The manual buttons keep `COG_TRIM`, because the feel
+of that control — beam 2 visibly crawling against beam 1 — is the reason it is a control and
+not a checkbox. Its stopping threshold is derived from one frame of its own motion rather than
+fixed, or it works at one energy only.
 
 **Cogging always slows a beam and never speeds one up.** `rate` is the fraction of the
 world's iterations a particle takes, the world offers them at the rate a *top-energy* beam
@@ -164,6 +188,14 @@ stretch worth anything is the stretch lying inside a detector. What changes with
 how many bunches meet there — so the **rate** of event displays follows `Detector.headOn`, not
 their brightness. A badly phased experiment does not see weaker collisions, it sees fewer of
 them, because a collision is a collision.
+
+**It is drawn as a beam, because that is what it is.** It used to be mint green and
+`DETECTOR_RADIUS_F` wide — exactly the half-height of the drawn detector — so inside an
+insertion it read as a green slab filling the experiment's box: a colour nothing else in the
+machine uses for beam, at a width that says "this volume is lit" rather than "these two beams
+are lying on each other". It is now the beam's own blue-white, a little wider than one beam
+where it is collected and thinner and dim where it is not. `check:render` keys on those two
+colours.
 
 **And a collision is drawn where the bunches met, not at the middle of the detector.** Over a
 pass every bunch of one batch meets every bunch of the other, and those meeting points are
@@ -316,6 +348,19 @@ becomes whatever was last kept, and it **decays** back to `TRIGGER_MIN_PT` = 2 G
 the session. The transverse event is built only for what is kept, which is the same argument a
 real readout makes about bandwidth.
 
+**The two experiments do not keep the same events, and that is what a detector is.** A trigger
+is built out of the thing behind it: CMS is a solenoid wrapped in muon chambers — the name is
+the design — and its muon thresholds reach lower than anybody else's; ATLAS's liquid-argon
+calorimeter is what its electron and photon menu was built on. So `Detector.priority` weights
+the pT that decides what is kept by `TRIGGER_SPECIALTY_GAIN` = 1.8 for the species that
+experiment was built around, and one beam fills the two panels with visibly different physics.
+The panel prints the **stream**, not the species — `single-μ`, `single-e`, `γ`, `b-jet`,
+`strange`, `jet` — because a readout does not write "an event", it writes one into a stream
+named for whatever fired the trigger, and that name is the whole of what identifying a particle
+is for. What is a departure is the gain itself: a real menu is a hundred lines of thresholds,
+prescales and isolation cuts, and this is one multiplier with the shape of that and none of the
+substance. See `limits.md`.
+
 Measured, six pairs colliding over thirty seconds of play: about 15 candidates offered per
 insertion, 7 to 9 kept, and each one picked out of ~5e10 interactions. The panel prints that
 denominator, because it is the point. **A panel does not exist until its experiment has
@@ -356,3 +401,9 @@ point by definition and the beam must be allowed to be drawn where the beam is.
   lit, one igniting while the other fades. That is a display persisting, not a collision
   persisting, and it is why the *band* has to be drawn from live positions: the band is what
   says where the beams are now.
+- **And because both are lit at once, each has to fade on its own age.** `drawCollisions`
+  batched every event's segments together by species — one set of strokes per colour for the
+  whole picture, at one alpha, taken as the freshest event's. So every flash at one experiment
+  relit the fading one at the other, a thing the eye catches at once and no assertion could
+  see. The loop is now per event, which costs a handful of strokes; `check:render` measures the
+  two alphas and requires the older one to be visibly dimmer.

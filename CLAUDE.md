@@ -48,14 +48,25 @@ of it. Both LHC beams, several batches each, plus whatever is in flight.
 What works today: fill the injector at 26 GeV and **ramp it to 450**, extract down TI 2 or
 TI 8 into either beam of the collider, stack batches, ramp to 6.8 TeV, switch any dipole
 circuit off by clicking it, quench one and recover it, dump either beam into its own
-absorber, watch every wall hit develop as a particle cascade, and **collide the two beams at
-P3 and P7** — phasing the crossing point onto an interaction point with bucket-timed
-injection and cogging. Each experiment has its own **event display** through the whole barrel,
-looking down the beam pipe: twenty-two layers, the tracker hits a charged particle leaves and
-a neutral does not, tracks curving in the solenoid and running straight outside it, the
-calorimeter cells they landed in at the depth they died at, the muon chambers, named objects,
-and a **trigger** that keeps the best collision instead of strobing every one. The beams
+absorber, watch every wall hit develop as a particle cascade, and **collide the two beams in
+ATLAS at P3 and CMS at P7** — walking the crossing point onto an interaction point by cogging,
+which is the only control that aims it. Each experiment has its own **event display** through
+the whole barrel, looking down the beam pipe: twenty-two layers, the tracker hits a charged
+particle leaves and a neutral does not, tracks curving in the solenoid and running straight
+outside it, the calorimeter cells they landed in at the depth they died at, the muon chambers,
+named objects, and a **trigger** that keeps the best collision instead of strobing every one —
+its own trigger, weighted towards what that experiment was built around, so one beam fills the
+two panels with different physics. The beams
 **thin as they collide**, and only thin — the protons left in them are exactly as energetic.
+
+And then there is a **run** to do with all that, because a machine that is working is a
+stationary state and that is the one shape a toy must not have. Two **mass spectra** grow out of
+the integrated luminosity and survive every dump — J/ψ, Υ and Z rediscovered in the first
+minute, and a Higgs bump that takes real running — a **fill** opens and closes as an episode
+with a report and an efficiency, √(τ·T) says **when to dump it**, and **things go wrong on their
+own**: UFOs, RF trips, a vacuum that eats the fill, a sector quench, and once in a machine's
+lifetime the 2008 interconnect failure, which shakes the picture and turns the tunnel red. The
+press has opinions about all of it. See `docs/running.md`.
 What is not built: `docs/limits.md`.
 
 ## Where everything is written down
@@ -66,6 +77,7 @@ What is not built: `docs/limits.md`.
 | `docs/physics.md` | the lattice, the pusher, field integration, the 250 m aperture |
 | `docs/beamlines.md` | transfer and dump lines, kickers and septa, injection, where the injector is parked |
 | `docs/collisions.md` | detectors, luminosity, phasing and cogging, the interaction region, event displays |
+| `docs/running.md` | the mass spectra, fills and when to dump one, incidents, the log and the alarm |
 | `docs/impacts.md` | wall damage, particle cascades, the quench rule |
 | `docs/rendering.md` | anything in `src/render/` |
 | `docs/reference.md` | any number you are about to change or quote |
@@ -160,12 +172,16 @@ src/sim/
   detector.ts    the experimental insertions: where they are, how big, luminosity, the trigger
   shower.ts      the branching cascade an impact sets off, the collision event, and the
                  same collision seen down the beam pipe (buildTransverse)
-  world.ts       the whole complex: machines, lines, ONE beam array, ONE backend
+  analysis.ts    the mass spectra: what an exposure turns into, and the Higgs search
+  incidents.ts   what goes wrong on its own, and what the papers made of it
+  world.ts       the whole complex: machines, lines, ONE beam array, ONE backend,
+                 plus the fill in progress, the chronicle and when to dump
 src/render/
   camera.ts      world <-> screen, including the inverse for hit testing
   palette.ts     magnet, casing, incandescence ramps and the one species colour table
   renderer.ts    all drawing of the machine, plus pickMagnet hit testing
   eventDisplay.ts  the r-phi event display, into an experiment's own canvas
+  spectrum.ts    a mass spectrum, into the run panel's canvas
 src/ui/          hud.ts, controls.ts, eventPanel.ts, readout.ts, format.ts
   layout.ts      where every overlay box goes, worked out against the camera
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
@@ -193,14 +209,18 @@ argued in the page named beside it.
 - **Two clocks, never fused**: a per-particle beam rate from its own energy, and a fixed
   200× machine clock. Anything the machine waits for is timed on `World.elapsed`. →
   `architecture.md`
-- **Collisions consume beam and nothing else does — and what they take is population.**
-  A burning fill is drawn thinner, never slower or softer. → `collisions.md`
+- **Only collisions and a vacuum fault consume beam — and what they take is population.**
+  A burning fill is drawn thinner, never slower or softer. → `collisions.md`, `running.md`
+- **The spectra are a function of ∫L dt and of nothing else**, never accumulated per frame, and
+  never reset by a dump. → `running.md`
 - **One collision, two views.** The r–z display on the ring and the r–φ display in an
   experiment's panel come from one generator and one seed. → `collisions.md`
 - **The beam is never magnified**, and every other magnification is stated with its true
   metres reported somewhere. → `rendering.md`
 - **The ring's dipoles are never touched by an extraction**, in the physics or in the
   drawing. → `beamlines.md`
+- **A control is greyed out only when pressing it would do nothing at all** — never when it
+  would do something instructive and bad, which is why no kicker is ever greyed. → `rendering.md`
 - **Anything the user can see is asserted** — in `check:render` if it is drawn, in
   `check:page` if it is placed. → this page, above.
 - **No overlay panel is drawn over the machine, and no panel over another panel.** Every box

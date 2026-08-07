@@ -39,18 +39,34 @@ import { Machine, beamEnergyJoules } from './machine';
 import { MagnetCircuit } from './powering';
 import { BeamState, FREE_FLIGHT } from './beam';
 import { type DamageSite, channelTemperature, penetrationDepth } from './damage';
-import { buildCollision, buildShower, buildTransverse } from './shower';
+import {
+  SPECIES_EM,
+  SPECIES_LEPTON,
+  SPECIES_MUON,
+  buildCollision,
+  buildShower,
+  buildTransverse,
+} from './shower';
 import {
   BATCH_LENGTH,
   BUNCHES_PER_BATCH,
   BUNCH_SPACING,
   type CollisionEvent,
   Detector,
+  FEMTOBARN_INVERSE,
   INSERTION_HALF_LENGTH_F,
   SIGMA_HIGGS,
   SIGMA_INELASTIC,
   pairLuminosity,
+  triggerStream,
 } from './detector';
+import { Analysis } from './analysis';
+import {
+  type IncidentDefinition,
+  type IncidentSeverity,
+  IncidentSystem,
+  type LogEntry,
+} from './incidents';
 import { LOSS_STRIDE, type SimBackend } from './backend';
 import {
   APERTURE_STRIDE,
@@ -231,8 +247,30 @@ const DUMP_CELL_BEAM2 = 3;
  * P1 and P5, where the real general-purpose experiments are, are not free here: beam 1 is
  * injected at P2, beam 2 arrives at P8, and both dump lines leave P5. Of the four antipodal
  * pairs of straights that leaves exactly one, and this is it.
+ *
+ * **They are the real experiments, standing at the wrong points, and that is deliberate.**
+ * An unnamed detector is a box; ATLAS and CMS are two particular machines with two
+ * particular things they are better at than each other, and that difference is worth having
+ * on screen (see `TRIGGER_SPECIALTY_GAIN`) — an experiment that identifies nothing is not
+ * much of an experiment. What is faked is only the address: the real pair face each other
+ * across P1 and P5, and here the only free antipodal pair is P3 and P7. Both names are
+ * printed with their point beside them so the substitution is never hidden. See
+ * `docs/limits.md`.
  */
 const DETECTOR_CELLS = [2, 6];
+/**
+ * Who stands there, and what each one's trigger is built around.
+ *
+ * ATLAS is a liquid-argon electromagnetic calorimeter inside a toroid: electrons and photons
+ * are what its menu was designed on. CMS is a 4 T solenoid wrapped in muon chambers — the
+ * name is the design statement — and its muon triggers reach lower in pT than anybody
+ * else's. So the two panels fill with visibly different physics out of one beam, which is
+ * the whole point of putting two general-purpose experiments on one ring.
+ */
+const DETECTOR_EXPERIMENTS = [
+  { name: 'ATLAS', specialty: [SPECIES_EM, SPECIES_LEPTON], specialtyLabel: 'e/γ' },
+  { name: 'CMS', specialty: [SPECIES_MUON], specialtyLabel: 'μ' },
+] as const;
 
 /**
  * Cogging: the fractional trim put on beam 2's revolution frequency while the operator
@@ -252,10 +290,28 @@ const DETECTOR_CELLS = [2, 6];
  * the beam radially, which is not modelled.
  */
 const COG_TRIM = 0.04;
+/**
+ * What the *automatic* loop uses while it is still far from the interaction point, and how
+ * far "far" is [m].
+ *
+ * Injection no longer aims at a phase, so cogging does all of the aiming, and it can start
+ * from anywhere on the half-ring the crossing point is defined over — measured, 5.8 km,
+ * which at `COG_TRIM` is twenty-two seconds of nothing at injection energy. That is the same
+ * dead time the phase hunt was removed for, moved one control along.
+ *
+ * So the loop runs the slip hard until the crossing is nearly on the point and then drops to
+ * the operator's own trim for the last few hundred metres, which is what it takes to stop
+ * accurately — a frame of motion is the finest it can aim (see `updateCogging`). Measured,
+ * from the worst case: about seven seconds at injection and two at flat top.
+ *
+ * The manual buttons keep `COG_TRIM`, because the *feel* of the control is the point of
+ * having one: beam 2 visibly crawling against beam 1 is what the picture is showing.
+ */
+const COG_TRIM_FAST = 0.14;
+const COG_APPROACH = 400;
 
 /**
- * How close to head-on a synchronised injection has to get before the kicker will fire, and
- * why it is not tighter.
+ * Why an injection no longer waits for a phase, and what it still waits for.
  *
  * **The phase a batch can be delivered at is quantised.** Nothing that happens while the
  * bunch is in flight can change where it will meet the other beam — see `bucketState` — so
@@ -265,32 +321,19 @@ const COG_TRIM = 0.04;
  * nearly 27/7 of the SPS does, and it is why the two machines' RF is locked on the real
  * machine rather than left to chance.
  *
- * So a synchronised pulse cannot promise head-on, and demanding it is what makes injection
- * feel broken: measured, insisting on ±247 m meant hunting round the grid for up to
- * thirty injector turns — thirteen seconds of the machine visibly doing nothing. What it
- * promises instead is **collisions**: land inside the batch overlap, where the experiments
- * see something immediately, which takes one to three turns. Getting from there to the peak
- * is what cogging is for, and that division is the honest one — a real fill is injected on
- * buckets and *then* cogged.
- */
-const SYNC_WINDOW = (BATCH_LENGTH / 2) * 0.3;
-/** The widest it will settle for, and how long it takes to get there. */
-const SYNC_WINDOW_MAX = (BATCH_LENGTH / 2) * 0.9;
-/**
- * How long the pulse insists on the tight window before it will take whatever collides.
+ * A coarse grid means a phase hunt is a lottery, and it was one: measured, the same fill
+ * held 1.2 s once and 8.9 s the next time, up to thirteen seconds when the window was
+ * tight, with the machine visibly doing nothing and nothing on screen saying why. That is
+ * a bad trade for a toy — **cogging moves the crossing point anywhere on the ring in about
+ * a second at flat top**, so waiting for the grid buys what one press of `auto` gives
+ * away, and it buys it in dead time. So the pulse fires as soon as it may and the phasing
+ * is the operator's, which is also the division a real fill makes: injected, *then* cogged.
  *
- * The grid is coarse — about 430 m, one thirty-first of the half-ring the crossing point can
- * sit anywhere in — so a fixed threshold makes the wait a lottery: measured, the same fill
- * held 1.2 s once and 8.9 s the next time, for no reason the operator can see or act on.
- * Relaxing the window takes a good phase if one comes round early and settles for a working
- * one if not, which bounds the hold at a few seconds.
- *
- * It cannot do better than that and should not pretend to. Landing inside the overlap is
- * what injection can promise; the last few hundred metres are cogging's job, and needing
- * both is the honest shape of the problem rather than a gap in it.
+ * One thing it still holds for, and that one never relaxes: **a batch must not land on top
+ * of one of its own.** See `bucketState` — landing off the bucket costs luminosity and
+ * cogging takes it back; landing on a circulating batch cannot be undone by anything.
  */
-const SYNC_RELAX = 5;
-/** Seconds of wall clock an armed kicker will wait for its bucket before giving up. */
+/** Seconds of wall clock an armed kicker will wait for a clear bucket before giving up. */
 const SYNC_TIMEOUT = 12;
 
 /** How long a collision event stays on the screen [s]. */
@@ -303,6 +346,24 @@ const EVENT_LIFETIME = 1.1;
  * each other at any instant; the luminosity sum above is over every pair either way.
  */
 const MAX_OVERLAPS = 32;
+
+/**
+ * Machine seconds assumed between fills before there is anything to measure.
+ *
+ * A cycle here is a chain delivery, an injector ramp and a collider ramp — about a quarter of
+ * an hour of machine time if nothing goes wrong. It only sets the *first* answer the optimum
+ * fill length gives; after one fill the number is measured from what this operator actually
+ * takes, which is the honest input to that formula.
+ */
+const DEFAULT_TURNAROUND = 900;
+
+/** Wall seconds for the ground to stop shaking, by 1/e. */
+const SHAKE_DECAY = 0.55;
+
+/** How loud each severity is, for deciding what may shout over what. */
+const ALARM_RANK: Record<IncidentSeverity, number> = { notice: 0, alarm: 1, catastrophe: 2 };
+/** Wall seconds a loud line holds the banner against a quieter one. */
+const ALARM_FLOOR = 6;
 
 
 /**
@@ -433,22 +494,6 @@ export interface SectorRef {
 
 export type KickerState = 'idle' | 'armed' | 'firing';
 
-/**
- * How an armed injection kicker chooses its moment.
- *
- *  · `bucket` — it waits until firing would put the batch head-on with one already
- *    circulating the other way, and only then lets go. This is what a real injection does,
- *    and it is why a real fill collides without anybody aiming it: the SPS and the LHC run
- *    on locked RF and a batch goes into a chosen bucket, not into the next gap.
- *  · `now` — it fires on the first bunch that comes past. The batch lands wherever it lands,
- *    the crossing point is somewhere in the arcs, and the experiments see nothing. Kept
- *    because it is the demonstration: press it, then look at the interaction region and see
- *    where the two beams are actually meeting.
- *
- * A dump kicker ignores this entirely — there is nothing to be in phase with.
- */
-export type KickerTiming = 'bucket' | 'now';
-
 /** One extraction path: the line, its kicker and what powers its bend. */
 export interface Extraction {
   line: BeamLine;
@@ -465,10 +510,9 @@ export interface Extraction {
   /** Index of its kicker, and the kicker's geometry for drawing. */
   kicker: number;
   kickerArc: Arc | null;
-  /** Whether this pulse waits for its bucket, and when it was armed (`World.elapsed`). */
-  timing: KickerTiming;
+  /** When it was armed (`World.elapsed`), for the hold's timeout. */
   armedAt: number;
-  /** Set while the pulse is armed and holding for phase, for the readout. */
+  /** Set while the pulse is armed and holding for a clear bucket, for the readout. */
   waitingForBucket: boolean;
 }
 
@@ -476,6 +520,39 @@ export interface AdvanceResult {
   steps: number;
   /** Particle ids that appeared this frame — their comet tails must start clean. */
   spawned: number[];
+}
+
+/**
+ * A fill, while it is running.
+ *
+ * A fill begins the moment anything is circulating in the collider and ends when nothing is —
+ * dumped on purpose, thrown into a wall, or taken away by an incident. Everything an operator
+ * is judged on is in here, and none of it is derivable afterwards, which is why it is
+ * accumulated rather than reconstructed.
+ */
+export interface FillProgress {
+  index: number;
+  /** `machineClock` at the first proton and at the last. */
+  startedAt: number;
+  /** Machine seconds this fill has spent actually colliding — the number that matters. */
+  stableSeconds: number;
+  /** ∫L dt collected in this fill alone [cm⁻²], over both insertions. */
+  integrated: number;
+  /** Highest instantaneous luminosity it reached [cm⁻² s⁻¹], summed over insertions. */
+  peakLuminosity: number;
+  incidents: number;
+  quenches: number;
+  /** Batches that were injected into it, ever. */
+  batches: number;
+}
+
+/** The same thing, closed off. */
+export interface FillReport extends FillProgress {
+  endedAt: number;
+  /** How it ended, in the fewest words that distinguish the cases. */
+  reason: string;
+  /** Machine seconds between the previous fill ending and this one starting. */
+  turnaround: number;
 }
 
 // --- injector placement ------------------------------------------------------
@@ -732,12 +809,51 @@ export class World {
   cogging = 0;
   /** True while the automatic cogging loop is walking the crossing point onto an IP. */
   coggingAuto = false;
+  /** The trim actually applied: `COG_TRIM`, or `COG_TRIM_FAST` while auto is still far out. */
+  cogTrim = COG_TRIM;
 
   /** How far the injector stands off the collider — the length of TI 2 [m]. */
   readonly standoff: number;
   /** Machine seconds until the injector chain delivers its next batch; 0 = idle. */
   fillRemaining = 0;
   fills = 0;
+
+  // --- what the run is for, and what interrupts it --------------------------
+
+  /**
+   * The mass spectra, which are the only thing here that survives a dump.
+   *
+   * A fill is an episode; this is the campaign. See `analysis.ts` for why it is computed from
+   * ∫L dt rather than accumulated from the handful of events this simulation draws.
+   */
+  readonly analysis = new Analysis();
+  /** The machine's own chronicle: incidents, fills, discoveries. Newest last. */
+  readonly chronicle: LogEntry[] = [];
+  /** What went wrong, while it is still worth shouting about. Drives the banner. */
+  alarm: { text: string; severity: IncidentSeverity; at: number } | null = null;
+  readonly incidents = new IncidentSystem();
+  /**
+   * How hard the ground is shaking, 0..1, decaying on the **wall** clock like every other
+   * thing that is about what the eye has just seen.
+   */
+  shake = 0;
+  /**
+   * Beam–gas losses, as a multiplier on the burn-off rate, and the machine time left of it.
+   *
+   * The one incident that does not end the fill. See `docs/impacts.md`.
+   */
+  vacuumFactor = 1;
+  vacuumUntil = 0;
+
+  /** The fill in progress, and the ones before it. */
+  fill: FillProgress | null = null;
+  readonly fillHistory: FillReport[] = [];
+  /** `machineClock` when the last fill ended, for the turnaround the optimum is built on. */
+  private lastFillEnded = 0;
+  /** Why the fill in progress is going to end, set by whatever ends it. */
+  private abortReason = '';
+  /** Quenched circuits last frame, so a fill can be told how many it collected. */
+  private lastQuenchCount = 0;
 
   private readonly fieldTable: Float32Array;
   private readonly sectorRefs: SectorRef[];
@@ -779,13 +895,17 @@ export class World {
 
     // The insertions. They own nothing but a place on the closed orbit; whether anything is
     // colliding there is a question about particles, and particles live in one array.
-    this.detectors = DETECTOR_CELLS.map((cell) => {
+    this.detectors = DETECTOR_CELLS.map((cell, i) => {
       const straight = this.collider.ring.straights[cell];
       const mid = { x: (straight.x1 + straight.x2) / 2, y: (straight.y1 + straight.y2) / 2 };
+      const experiment = DETECTOR_EXPERIMENTS[i];
       return new Detector(
         {
           id: `ip${cell + 1}`,
-          name: `IP${cell + 1}`,
+          name: experiment.name,
+          point: `P${cell + 1}`,
+          specialty: experiment.specialty,
+          specialtyLabel: experiment.specialtyLabel,
           machine: 0,
           cell,
         },
@@ -987,7 +1107,6 @@ export class World {
       septum: -1,
       kicker: -1,
       kickerArc: null,
-      timing: 'bucket' as KickerTiming,
       armedAt: 0,
       waitingForBucket: false,
     }));
@@ -1217,11 +1336,10 @@ export class World {
    * Arms a kicker. Never refused: the interesting failures — extracting an empty ring,
    * firing into a machine that has ramped — are things to watch, not things to prevent.
    */
-  armKicker(index: number, timing: KickerTiming = 'bucket'): void {
+  armKicker(index: number): void {
     const e = this.extractions[index];
     if (!e || e.state !== 'idle') return;
     e.state = 'armed';
-    e.timing = timing;
     e.armedAt = this.elapsed;
     e.waitingForBucket = false;
   }
@@ -1232,13 +1350,31 @@ export class World {
    */
   setCogging(direction: number): void {
     this.cogging = Math.sign(direction);
+    // Held by hand, it is always the operator's own trim: the loop's fast slip is for
+    // crossing a half-ring, not for aiming.
+    this.cogTrim = COG_TRIM;
     if (this.cogging !== 0) this.coggingAuto = false;
+  }
+
+  /**
+   * Is there anything for cogging to aim? It takes a batch in **each** beam.
+   *
+   * The same snapshot the crossing point is computed from, asked as a yes/no: a trim of one
+   * beam's revolution frequency only means anything against another beam, and with one of
+   * them empty there is no crossing point to walk. This is what greys the cogging controls
+   * out — see `ui/controls.ts` for which controls may be greyed and which may never be.
+   */
+  get canCog(): boolean {
+    return this.forward.length > 0 && this.reverse.length > 0;
   }
 
   /** Starts the automatic loop, which walks the crossing point onto an IP and stops. */
   autoCog(): void {
     this.coggingAuto = !this.coggingAuto;
-    if (!this.coggingAuto) this.cogging = 0;
+    if (!this.coggingAuto) {
+      this.cogging = 0;
+      this.cogTrim = COG_TRIM;
+    }
   }
 
   /**
@@ -1293,6 +1429,217 @@ export class World {
   /** Index of a line by its id, for the UI. */
   lineIndex(id: string): number {
     return this.extractions.findIndex((e) => e.line.config.id === id);
+  }
+
+  // --- the run: what it is worth, and what interrupts it --------------------
+
+  /**
+   * Writes a line in the machine's chronicle, and shouts about it if it is loud enough.
+   *
+   * **A quieter line never shouts over a louder one.** The interesting sequence is exactly
+   * the one that gets this wrong: a catastrophe dumps the beams, the fill ends two frames
+   * later, and the banner went from `INTERCONNECT FAILURE` to `fill 1 ended — beam dump`
+   * before anybody could read the first one — with the red tint on the picture going with it,
+   * since that is keyed on what the banner is saying.
+   */
+  log(kind: LogEntry['kind'], text: string, severity: IncidentSeverity = 'notice'): void {
+    this.chronicle.push({ at: this.machineClock, kind, severity, text });
+    if (this.chronicle.length > 64) this.chronicle.shift();
+    if (severity === 'notice' && kind !== 'physics' && kind !== 'fill') return;
+    const held = this.alarm;
+    if (held && ALARM_RANK[held.severity] > ALARM_RANK[severity] && this.elapsed - held.at < ALARM_FLOOR) {
+      return;
+    }
+    this.alarm = { text, severity, at: this.elapsed };
+  }
+
+  /**
+   * Fires one incident by name, exactly as the scheduler would — the log line, the alarm, the
+   * shake and the press reaction included.
+   *
+   * `check` uses it to test every incident's effects, and `check:page` uses it through the
+   * console handle in `main.ts` to see what the *page* does about a catastrophe. There is no
+   * second code path: an incident forced by hand is the same event as one that arrived.
+   */
+  forceIncident(id: string): string | null {
+    const hit = this.incidents.force(this, id);
+    if (hit) this.applyIncident(hit.def, hit.text);
+    return hit?.text ?? null;
+  }
+
+  /**
+   * Fires both dump kickers — what the machine protection system does about almost anything.
+   *
+   * It is the same control the operator has, armed from the inside: the beams leave down their
+   * own lines into their own absorbers, which is the point of having them.
+   */
+  dumpBeams(reason = 'beam dump'): void {
+    this.abortReason = reason;
+    for (const id of ['td1', 'td2']) {
+      const index = this.lineIndex(id);
+      if (index >= 0) this.armKicker(index);
+    }
+  }
+
+  /** Beam–gas losses, `factor` times the burn-off rate, for `seconds` of machine time. */
+  setVacuumFault(factor: number, seconds: number): void {
+    this.vacuumFactor = Math.max(this.vacuumFactor, factor);
+    this.vacuumUntil = Math.max(this.vacuumUntil, this.machineClock + seconds);
+  }
+
+  /** Shakes the picture. Purely a rendering state; nothing in the physics can see it. */
+  shakeGround(amount: number): void {
+    this.shake = Math.min(1, this.shake + amount);
+  }
+
+  /**
+   * Protons per machine second leaving the beams, and the lifetime that implies.
+   *
+   * Burn-off is the honest part of it — two protons per inelastic interaction, and nothing
+   * puts them back — and a vacuum fault multiplies it, which is what beam–gas scattering
+   * really does to a fill. Both take *population* and nothing else: the protons still going
+   * round are exactly as energetic, which is the rule the whole drawing of the beam is built
+   * on. See `docs/collisions.md`.
+   */
+  get burnRate(): number {
+    let lumi = 0;
+    for (const det of this.detectors) lumi += det.luminosity;
+    return lumi * SIGMA_INELASTIC * 2 * this.vacuumFactor;
+  }
+
+  /** Protons circulating in the collider. */
+  get circulatingProtons(): number {
+    let n = 0;
+    for (let i = 0; i < this.beam.count; i++) {
+      if (this.beam.alive[i] && this.beam.ring[i] === 0) n += this.beam.charge[i];
+    }
+    return n;
+  }
+
+  /** Machine seconds the present losses would take to empty the machine in. */
+  get beamLifetime(): number {
+    const rate = this.burnRate;
+    return rate > 0 ? this.circulatingProtons / rate : Infinity;
+  }
+
+  /**
+   * Machine seconds between fills, measured — how long it actually takes this operator to get
+   * beam back. Falls back to a plausible cycle before there is anything to measure.
+   */
+  get turnaround(): number {
+    const seen = this.fillHistory.filter((f) => f.turnaround > 0);
+    if (seen.length === 0) return DEFAULT_TURNAROUND;
+    let sum = 0;
+    for (const f of seen) sum += f.turnaround;
+    return sum / seen.length;
+  }
+
+  /**
+   * How long a fill should be run for, in machine seconds — **the one calculation that says
+   * when to press dump.**
+   *
+   * With a beam decaying at lifetime τ and a turnaround of T after every fill, the average
+   * luminosity over the whole cycle is maximised at `√(τ·T)`. It is the standard result, it
+   * is why the real machine runs 10–15 hour fills against a 46 hour lifetime and a 4 hour
+   * turnaround, and it is exactly as true here — with this machine's own measured numbers in
+   * it, which are a much faster turnaround, so the answer comes out much shorter.
+   *
+   * Infinite while nothing is being lost, which is the correct answer to "when should I dump a
+   * beam that is not burning": not yet.
+   */
+  get optimumFillLength(): number {
+    const tau = this.beamLifetime;
+    if (!isFinite(tau)) return Infinity;
+    return Math.sqrt(tau * this.turnaround);
+  }
+
+  /** Machine seconds the fill in progress has been up, or 0 if there is no beam. */
+  get fillAge(): number {
+    return this.fill ? this.machineClock - this.fill.startedAt : 0;
+  }
+
+  /**
+   * Opens, accumulates and closes the fill in progress.
+   *
+   * A fill starts at the first proton on the collider's orbit and ends at the last one, which
+   * is a question about geometry (`forward`/`reverse`) and not about capture — the same
+   * snapshot the luminosity is built on, for the same reason.
+   */
+  private updateFill(dtMachine: number): void {
+    const beam = this.forward.length + this.reverse.length;
+    let lumi = 0;
+    for (const det of this.detectors) lumi += det.luminosity;
+
+    if (beam > 0 && !this.fill) {
+      this.fill = {
+        index: this.fillHistory.length + 1,
+        startedAt: this.machineClock,
+        stableSeconds: 0,
+        integrated: 0,
+        peakLuminosity: 0,
+        incidents: 0,
+        quenches: 0,
+        batches: beam,
+      };
+      this.abortReason = '';
+      this.log('fill', `fill ${this.fill.index} — beam in the collider`);
+    }
+
+    if (this.fill) {
+      this.fill.batches = Math.max(this.fill.batches, beam);
+      this.fill.integrated += lumi * dtMachine;
+      this.fill.peakLuminosity = Math.max(this.fill.peakLuminosity, lumi);
+      if (lumi > 0) this.fill.stableSeconds += dtMachine;
+      const quenched = this.quenchedCircuits;
+      if (quenched > this.lastQuenchCount) this.fill.quenches += quenched - this.lastQuenchCount;
+      this.lastQuenchCount = quenched;
+
+      if (beam === 0) {
+        const report: FillReport = {
+          ...this.fill,
+          endedAt: this.machineClock,
+          reason: this.abortReason || (this.fill.stableSeconds > 0 ? 'beam lost' : 'lost on arrival'),
+          turnaround: this.fillHistory.length > 0 ? this.fill.startedAt - this.lastFillEnded : 0,
+        };
+        this.fillHistory.push(report);
+        if (this.fillHistory.length > 16) this.fillHistory.shift();
+        this.lastFillEnded = this.machineClock;
+        this.fill = null;
+        this.log(
+          'fill',
+          `fill ${report.index} ended — ${report.reason}. ` +
+            `${(report.integrated / FEMTOBARN_INVERSE).toFixed(4)} fb⁻¹ in ` +
+            `${(report.stableSeconds / 60).toFixed(0)} min of stable beams`,
+        );
+      }
+    } else {
+      this.lastQuenchCount = this.quenchedCircuits;
+    }
+  }
+
+  /** Rolls for an incident, and lets the vacuum recover. */
+  private updateIncidents(dtWall: number, dtMachine: number): void {
+    this.shake *= Math.exp(-dtWall / SHAKE_DECAY);
+    if (this.shake < 1e-3) this.shake = 0;
+    if (this.vacuumFactor > 1 && this.machineClock > this.vacuumUntil) {
+      this.vacuumFactor = 1;
+      this.log('machine', 'vacuum back in specification — beam–gas losses back to nothing');
+    }
+
+    const hit = this.incidents.advance(this, dtMachine);
+    if (hit) this.applyIncident(hit.def, hit.text);
+  }
+
+  /** Everything that follows an incident having happened, however it came to happen. */
+  private applyIncident(def: IncidentDefinition, text: string): void {
+    if (this.fill) this.fill.incidents++;
+    // The fill's epitaph is what took it, not the dump that took it away — `dumpBeams` has
+    // already set the generic reason by the time this runs, and this is the specific one.
+    this.abortReason = def.name;
+    this.log('incident', text, def.severity);
+    this.shakeGround(def.severity === 'catastrophe' ? 1 : def.severity === 'alarm' ? 0.35 : 0);
+    const press = this.incidents.pressLine(def.severity);
+    if (press) this.log('press', press);
   }
 
   // --- the loop -------------------------------------------------------------
@@ -1401,6 +1748,10 @@ export class World {
     this.collectLosses();
     // After the step, so a crossing is judged on where the beams actually are.
     this.updateCollisions(dtWall, dtMachine);
+    // And after that, because both of these ask what the beams did this frame: whether the
+    // fill is still up, and whether something has just taken it away.
+    this.updateFill(dtMachine);
+    this.updateIncidents(dtWall, dtMachine);
 
     return { steps, spawned };
   }
@@ -1519,13 +1870,17 @@ export class World {
           det.bunchPairs += overlap / BUNCH_SPACING;
           if (bunch > det.crossingLuminosity) det.crossingLuminosity = bunch;
 
-          // One inelastic interaction takes one proton out of each beam. This is the only
-          // thing in the model that consumes beam on purpose, and it is why a fill has a
-          // lifetime rather than lasting until somebody dumps it.
-          const burn = lumi * SIGMA_INELASTIC * dtMachine;
+          // One inelastic interaction takes one proton out of each beam. This is what gives a
+          // fill a lifetime rather than letting it last until somebody dumps it — and the only
+          // other thing that consumes beam is a vacuum fault, which is beam–gas scattering and
+          // takes population in exactly the same way. Neither touches the energy.
+          const collided = lumi * SIGMA_INELASTIC * dtMachine;
+          const burn = collided * this.vacuumFactor;
           this.beam.charge[f.index] = Math.max(0, this.beam.charge[f.index] - burn);
           this.beam.charge[r.index] = Math.max(0, this.beam.charge[r.index] - burn);
-          det.burned += 2 * burn;
+          // What the *experiments* took is the collisions alone; the rest went into a wall
+          // somewhere as beam–gas, which is a different thing and is not theirs to claim.
+          det.burned += 2 * collided;
 
           // Is this pair meeting *inside* this insertion right now? Each batch occupies a
           // batch length of orbit, so they interpenetrate over the intersection of those two
@@ -1614,13 +1969,17 @@ export class World {
         // what stops the display being a strobe. The transverse view is built only for what
         // is kept — it is the expensive half and there is no point building it for an event
         // nobody will look at, which is exactly the argument a real readout makes.
-        if (det.kept === null || shower.hardestPt >= det.threshold) {
+        //
+        // The bar is asked of *this* experiment: a muon is worth more to CMS and an electron
+        // more to ATLAS, so two panels on one beam fill with different physics.
+        if (det.kept === null || det.priority(shower.hardestSpecies, shower.hardestPt) >= det.threshold) {
           det.offer({
             event: shower,
             transverse: buildTransverse(cmEnergy, seed),
             cmEnergyGeV: cmEnergy,
             pileUp: det.pileUp,
             score: shower.hardestPt,
+            stream: triggerStream(shower.hardestSpecies),
             seen: det.events,
             at: this.elapsed,
           });
@@ -1630,6 +1989,12 @@ export class World {
       }
       det.relaxTrigger(dtWall);
       this.wasColliding[d] = colliding;
+
+      // **What the run is actually for.** Every experiment's luminosity goes into one
+      // combination, because a combination is what a discovery is — and it does not reset
+      // when the beams are dumped, because the data is on tape. See `analysis.ts`.
+      const found = this.analysis.advance(det.luminosity, dtMachine);
+      if (found) this.log('physics', found, 'alarm');
     }
 
     const cutoff = now() - EVENT_LIFETIME * 1000;
@@ -1681,15 +2046,20 @@ export class World {
         if (Math.abs(off) < Math.abs(best)) best = off;
       }
     }
+    // Hard while it is still a long way out, the operator's own trim for the approach. See
+    // `COG_TRIM_FAST`: the crossing point can start anywhere on a half-ring and walking that
+    // at the manual rate is twenty seconds of the machine doing nothing visible.
+    this.cogTrim = Math.abs(best) > COG_APPROACH ? COG_TRIM_FAST : COG_TRIM;
     // It cannot aim finer than one frame of its own motion, and that motion is four times
     // larger at flat top than at injection because the beam is drawn going four times
     // faster. A fixed threshold is therefore a threshold that works at one energy: derive it
     // from what a frame actually moves.
-    const perFrame = (C * COG_TRIM * this.turnsPerSecond * dtWall) / 2;
+    const perFrame = (C * this.cogTrim * this.turnsPerSecond * dtWall) / 2;
     const grain = Math.max(2, perFrame * 1.5);
     if (!Number.isFinite(best) || Math.abs(best) < grain) {
       this.cogging = 0;
       this.coggingAuto = false;
+      this.cogTrim = COG_TRIM;
       return;
     }
     // Speeding beam 2 up walks the crossing point backwards along the orbit, so the trim
@@ -1838,21 +2208,19 @@ export class World {
 
       // Asked every frame, not only during the few frames a bunch spends on the arc the
       // kicker watches, so the readout can say what the pulse is waiting for.
+      //
+      // **One reason to hold and one only**: a batch about to land on top of one already
+      // circulating the same way. The phase it lands at is not one of them — the reachable
+      // phases are a coarse grid and hunting it is dead time the operator cannot see the
+      // point of, so the crossing point is cogged rather than waited for. See `SYNC_TIMEOUT`.
+      const sync = this.bucketState(e);
+      const elapsed = this.elapsed - e.armedAt;
       let holdForBucket = false;
-      if (e.timing === 'bucket') {
-        const sync = this.bucketState(e);
-        const elapsed = this.elapsed - e.armedAt;
-        const window =
-          SYNC_WINDOW + (SYNC_WINDOW_MAX - SYNC_WINDOW) * Math.min(1, elapsed / SYNC_RELAX);
-        // Two reasons to hold, and only one of them ever relaxes. Landing off the bucket
-        // costs luminosity and cogging can take it back; landing on top of a batch already
-        // circulating cannot be undone by anything.
-        if (sync && (sync.clash || Math.abs(sync.offset) > window)) {
-          e.waitingForBucket = true;
-          holdForBucket = elapsed < SYNC_TIMEOUT;
-        } else {
-          e.waitingForBucket = false;
-        }
+      if (sync && sync.clash) {
+        e.waitingForBucket = true;
+        holdForBucket = elapsed < SYNC_TIMEOUT;
+      } else {
+        e.waitingForBucket = false;
       }
 
       const cfg = e.line.config;
@@ -1949,19 +2317,18 @@ export class World {
   }
 
   /**
-   * How far from head-on the next batch down this line would arrive if the kicker let go
-   * now — or null if there is nothing in the other beam to be in phase with, in which case
-   * any moment will do.
+   * Where down this line the next batch would land, and whether that is on top of one of its
+   * own — or null if there is nothing to work it out from, in which case any moment will do.
    *
    * The thing that makes this answerable at all is that it **cannot change on its own**.
    * Every particle in this world covers the same path length per unit time, so as the bunch
    * closes on the kicker its remaining flight shortens by exactly as much as the circulating
-   * beam it is aiming at moves, and the crossing point — the mean of the two arclengths —
-   * does not move. Waiting does nothing; waiting a whole *injector turn* moves it by one
-   * injector circumference, and that is what makes the reachable phases a grid rather than a
-   * continuum. See `SYNC_WINDOW` for how wide that grid is and what it costs.
+   * beam moves, and where it lands relative to everything else does not drift. Waiting does
+   * nothing; waiting a whole *injector turn* moves it by one injector circumference, which is
+   * what makes the reachable phases a grid rather than a continuum — a grid too coarse to be
+   * worth hunting, which is why only the clash is held for. See `SYNC_TIMEOUT`.
    */
-  private bucketState(e: Extraction): { offset: number; dir: number; clash: boolean } | null {
+  private bucketState(e: Extraction): { dir: number; clash: boolean } | null {
     const cfg = e.line.config;
     if (cfg.toMachine !== 0) return null;
 
@@ -1980,7 +2347,6 @@ export class World {
     // every time.
     const arrive = arclengthOnRing(collider, e.line.exit.x, e.line.exit.y);
     const dir = e.line.exit.dx * arrive.tx + e.line.exit.dy * arrive.ty >= 0 ? 1 : -1;
-    const partners = dir > 0 ? this.reverse : this.forward;
 
     // Beam path still to run, for whichever batch in the injector reaches the kicker first:
     // the rest of the way round the injector to the kicker's downstream end, then the whole
@@ -2001,9 +2367,7 @@ export class World {
     // along the flight it has not made yet.
     const sVirtual = arrive.s - dir * remaining;
 
-    const ip = this.detectors[0]?.s ?? 0;
     const mine = dir > 0 ? this.forward : this.reverse;
-    const half = BATCH_LENGTH / 2;
     const C = collider.config.circumference;
 
     /**
@@ -2021,23 +2385,7 @@ export class World {
      */
     const clash = mine.some((q) => Math.abs(wrapSigned(sVirtual - q.s, C)) < BATCH_LENGTH);
 
-    // Aim at a batch that has nothing to collide with yet, so a fill pairs up one for one
-    // rather than piling every new batch onto the first one that arrived. With none free
-    // there is nothing to be in phase *with*, and the only rule left is not to land on top
-    // of one of our own.
-    let chosen: BunchOnOrbit | null = null;
-    for (const p of partners) {
-      const taken = mine.some((q) => Math.abs(this.crossingOffset(q.s, p.s, ip)) < half);
-      if (!taken) {
-        chosen = p;
-        break;
-      }
-    }
-    return {
-      offset: chosen ? this.crossingOffset(sVirtual, chosen.s, ip) : 0,
-      dir,
-      clash,
-    };
+    return { dir, clash };
   }
 
   /**
@@ -2073,7 +2421,7 @@ export class World {
       if (this.cogging !== 0 && m === 0) {
         const against = vx[i] * this.frame.tx + vy[i] * this.frame.ty < 0;
         const slowTheReverseBeam = this.cogging < 0;
-        if (against === slowTheReverseBeam) rate[i] *= 1 - COG_TRIM;
+        if (against === slowTheReverseBeam) rate[i] *= 1 - this.cogTrim;
       }
       if (m === NO_MACHINE) {
         this.beam.ring[i] = FREE_FLIGHT;

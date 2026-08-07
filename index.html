@@ -13,6 +13,11 @@
       <header class="title">
         <h1>LHC</h1>
         <span class="sub">two beams · filled from the SPS · collided at P3 and P7</span>
+        <!-- The machine's own voice: the last thing that happened, loudest first. It is
+             inside the title block on purpose — the camera is fitted against the *measured*
+             height of that block, so the machine makes room for it by itself. Its height
+             never changes, or the picture would resize every time something went wrong. -->
+        <div class="ticker" id="ticker"></div>
       </header>
 
       <!-- The left-hand rail: what the beam is, what it is doing, and what is computing it.
@@ -24,9 +29,16 @@
         <section class="panel panel--compute" id="panel-compute"></section>
       </aside>
 
-      <!-- The right-hand rail: the machine readouts, and nothing else. POWER is long and a
-           full-height column is the only shape that holds it. -->
+      <!-- The right-hand rail: what the run is for, and then the machine readouts. POWER is
+           long and a full-height column is the only shape that holds it.
+
+           RUN is at the top of this rail and not in the left one, and that is a measured
+           decision rather than a taste: the left rail is already 85 px over a 906 px window
+           with BEAM and PHYSICS in it — those are the readouts you operate against, so they
+           keep the space they have — and the spectra are what you look at once the machine is
+           running itself. See `docs/rendering.md`. -->
       <aside class="rail" id="rail-right">
+        <section class="panel panel--run" id="panel-run"></section>
         <section class="panel panel--power" id="panel-power"></section>
         <section class="panel panel--injector" id="panel-injector"></section>
       </aside>

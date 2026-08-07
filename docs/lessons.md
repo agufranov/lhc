@@ -74,6 +74,11 @@ None of these threw. All of them looked like broken physics.
   at most once per iteration, and at flat top a captured beam is already at exactly 1 — so
   cogging *up* did nothing, and the control worked in one direction only, at one energy only.
   Nothing threw; the button simply had no effect at the one energy anybody collides at.
+- **Bucket-synchronised injection was mostly waiting.** Holding for a phase could only choose
+  among a 430 m grid, so the same fill held 1.2 s once and 8.9 s the next time with nothing on
+  screen saying why — to buy what one second of cogging at flat top gives away. The hold for
+  *separation* stayed (a batch must not land on top of one of its own); the hold for phase
+  went, and the crossing point is now cogged onto the experiments and nothing else.
 - **Bucket-synchronised injection poured a whole fill into one bucket.** Every batch after the
   first was phased against the same partner, so all of them arrived at the same place in the
   ring — and one dump pulse then took the lot. It looked like the dump being wrong.
@@ -89,6 +94,18 @@ None of these threw. All of them looked like broken physics.
   at both insertions, half a turn apart — the crossing point is defined modulo C/2 — so with a
   phased fill the band sat on IP3 and IP7 lit up over what looked like empty pipe. Both the
   band (now from live positions) and the crossing tick (now at both antipodes) had to move.
+- **One alpha per species for the whole picture, on a per-event fade.** `drawCollisions`
+  batched every event's segments by colour and faded each colour at the freshest event's age —
+  so a flash at one experiment relit the fading event at the other, half a ring away. Both
+  detectors are lit at once for most of a fade (`EVENT_FLASH` is forty times the pass that
+  makes an event), so it happened on every single collision, and no assertion about *what* was
+  drawn could see it. Batch per event, not per picture.
+- **The machine was fitted to the window, and the window is not empty.** `Camera.fit` centred
+  the complex in the whole canvas with one margin, while a title sits over the top of it and a
+  row — two rows, under about 1500 px — of buttons over the bottom. The collider's lowest
+  sector labels went behind the buttons on anything under about 1000 px tall, and the labels
+  are drawn *outside* the tunnel wall, so they are not even in the bounds being fitted. Borders
+  are per side now, and `LABEL_ROOM` is added to the two that have furniture over them.
 - **An overlay panel laid over the machine it is a readout for.** The experiments' column was
   put at x 772 on a 1280 px canvas; the collider's tunnel wall reaches 839. Nothing could have
   caught it: the camera's margin is in the renderer, the column width is in the stylesheet,
@@ -155,6 +172,43 @@ None of these threw. All of them looked like broken physics.
   it.** TI 8 cuts across the top of the space below the injector on its way in, and it alone
   cost the lower card 90 px — enough to push it out of the layout entirely. The band is asked
   for the strip the card actually occupies, in two passes: place, re-measure, re-place.
+- **A quieter line shouted over a louder one, two frames later.** The interconnect failure
+  dumps the beams; the fill therefore ends a couple of frames after it; the fill's own log line
+  then took the banner — and with it the red tint on the picture, which was keyed on what the
+  banner was saying. The loudest event in the whole toy was legible for 30 ms. Two fixes, and
+  both were needed: a louder severity holds the banner for `ALARM_FLOOR` seconds against
+  anything quieter, and the tint is keyed on the *shake* instead, which is a number only a
+  catastrophe sets high enough. **An effect must not be triggered by a UI state that something
+  else is allowed to overwrite.**
+- **Random events on by default would have made every measured number a number *usually*.**
+  `check` puts thirty seconds of play — an hour and a half of machine time — through a dozen
+  worlds, and at the incident rates about a quarter of those blocks would be interrupted by a
+  beam dump. Nothing would have failed; the numbers in `reference.md` would just have started
+  drifting. The simulation is quiet by default and the *app* switches incidents on, with
+  `?quiet=1` for the browser gates, which have the same problem twice over: `collide()` has to
+  end with two beams still up.
+- **"The rail must not scroll" was the wrong assertion all along.** It was written to catch a
+  flexbox crushing POWER into a 115 px scroller, and it did — but what it *measured* was the
+  rail's own overflow, so the first panel deliberately added to that rail failed it. The bug
+  worth catching is a panel whose own content is hidden (it cannot be found), not a column that
+  scrolls (it can). Asserting the symptom of one instance of a bug outlives its usefulness the
+  first time the design legitimately changes.
+- **A `disabled` button loses its tooltip, which is where the reason is.** Everything in this
+  bar explains itself on hover, and a control greyed with the native attribute fires no mouse
+  events at all — so the one moment the user most wants the explanation is the one moment it is
+  not there. Greyed is `aria-disabled` plus a class, and the handlers refuse the press.
+- **A greying rule that cancels what the control was doing is a controller, not a view.** The
+  first version let a control switch its own state off as it went dead: auto-cogging cancelled
+  when the beams stopped being there. It was removed before it could bite — `canCog` turns out
+  not to flicker, measured at 1800 frames of 1800 — but it is one snapshot away from the bug
+  `collisions.md` already records, where the automatic loop switched itself off because a bunch
+  passing a transfer line fell out of a frame's snapshot. A predicate asked once a frame decides
+  how a button *looks* and nothing else.
+- **`check:page` has lost a batch once, at 2560×1440**, and reported `0 of 2` experiments with
+  no other assertion failing: the driven run reaches collisions only if each injection actually
+  arrives, and `collide()` waits a bounded 20 s of wall clock for each one before carrying on
+  into the ramp regardless. Two full runs either side of it were green. If it happens again the
+  suspect is that timeout and not whatever was being changed at the time.
 - **A boundary test written as "on or past the edge" put the injector inside its own band.**
   The bands are defined as *above the injector's top* and *below its bottom*, and the SPS's
   own extreme points landed exactly on those lines, so floating-point equality handed every

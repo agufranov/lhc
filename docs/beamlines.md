@@ -152,6 +152,12 @@ when a bunch of the right beam arrives, that bunch is thrown out of the ring, it
 a transfer line, and the collider picks up whatever turns up, wherever it turns up. Nothing
 is handed over anywhere: it is one continuous flight through one field table.
 
+It fires on the first bunch it may, and holds only for one thing: a batch about to land on top
+of one already circulating the same way (`bucketState`, `SYNC_TIMEOUT`). It used to hold for a
+*phase* as well — the bucket that would put the batch head-on with the other beam — and does
+not any more, because the phases injection can reach are a 430 m grid and hunting them cost
+seconds of dead time to save one press of the cogging control. See `collisions.md`.
+
 The pieces:
 
 - **A transfer line is a lattice, not a special case.** Its straights and bends are rows in

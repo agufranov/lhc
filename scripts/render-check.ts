@@ -22,6 +22,7 @@ import {
   OVERLAY_PADDING,
   READOUT_COLUMN,
   eventCardBoxes,
+  machineBorders,
 } from '../src/ui/layout';
 import { CpuBackend } from '../src/sim/backends/cpuBackend';
 import { TRAIL_STRIDE } from '../src/sim/backend';
@@ -51,6 +52,10 @@ class MockContext {
   fills: FillRecord[] = [];
   strokes: Array<{ style: string; width: number; points: Point[]; op: string }> = [];
   texts: Array<{ text: string; x: number; y: number }> = [];
+  /** Whole-canvas washes, with the gradient object they were painted with. */
+  rects: Array<{ style: unknown }> = [];
+  /** Every translate asked for — the shake is the only thing that uses one. */
+  translates: Point[] = [];
 
   beginPath(): void {
     this.subpaths = 0;
@@ -84,9 +89,14 @@ class MockContext {
       op: this.globalCompositeOperation,
     });
   }
-  fillRect(): void {}
+  fillRect(): void {
+    this.rects.push({ style: this.fillStyle });
+  }
   clearRect(): void {}
   setTransform(): void {}
+  translate(x: number, y: number): void {
+    this.translates.push([x, y]);
+  }
   save(): void {}
   restore(): void {}
   drawImage(): void {}
@@ -94,8 +104,28 @@ class MockContext {
     this.texts.push({ text, x, y });
   }
   createRadialGradient() {
-    return { addColorStop(): void {} };
+    return gradient();
   }
+  createLinearGradient() {
+    return gradient();
+  }
+}
+
+/** A recording gradient: what matters about one is the colours that went into it. */
+function gradient(): { stops: string[]; addColorStop(offset: number, color: string): void } {
+  return {
+    stops: [],
+    addColorStop(_offset: number, color: string): void {
+      this.stops.push(color);
+    },
+  };
+}
+
+/** The colours a gradient was built from, or nothing if this was a plain fill style. */
+function stopsOf(style: unknown): string[] {
+  return typeof style === 'object' && style !== null && 'stops' in style
+    ? (style as { stops: string[] }).stops
+    : [];
 }
 
 function makeCanvas(clientWidth = 1280, clientHeight = 860) {
@@ -174,7 +204,10 @@ const injector = world.injector;
 world.attachBackend(new CpuBackend());
 world.fillInjector();
 fillCollider(world);
-renderer.resize(world);
+// Fitted as the app fits it: inside the title and the button bar, with room for the labels
+// the machine draws outside its own tunnel wall. Fitting it to the bare window is what put
+// the collider's lowest sector names behind the buttons.
+renderer.resize(world, machineBorders({ title: 28, controls: 90 }));
 
 // a few frames so there is a trail to draw
 for (let i = 0; i < 20; i++) world.advance(1 / 60);
@@ -260,15 +293,20 @@ for (const [name, ring] of [['collider', machine.ring], ['injector', injector.ri
   const picturePx = new Map<string, number>();
   /** Window sizes with no room for a readable card, which get one anyway. */
   const atFloor = new Set<string>();
+  /** Window sizes where the two pictures came out different — there must be none. */
+  const unequal = new Set<string>();
   console.log('   window      band above   band below   card left   picture (top / bottom)');
   for (const [w, h] of sizes) {
     const r = new Renderer(makeCanvas(w, h) as unknown as HTMLCanvasElement);
-    r.resize(world);
+    // Fitted the way the app fits it: inside the title and the button bar, not inside the
+    // whole window. That is what moves the injector's band, which is what a card is placed in.
+    r.resize(world, machineBorders(CHROME));
     const bands = r.machineBands(world);
     const {
       cards: [a, b],
     } = eventCardBoxes(w, h, bands, CHROME);
     picturePx.set(`${w}x${h}`, a.canvas);
+    if (a.canvas !== b.canvas) unequal.add(`${w}x${h}`);
     for (const card of [a, b]) {
       smallestPicture = Math.min(smallestPicture, card.canvas);
       biggestPicture = Math.max(biggestPicture, card.canvas);
@@ -300,7 +338,7 @@ for (const [name, ring] of [['collider', machine.ring], ['injector', injector.ri
   }
   const colliderRight = renderer.colliderRight(world);
   const small = picturePx.get('1280x860')!;
-  const large = picturePx.get('1920x1080')!;
+  const large = picturePx.get('2560x1440')!;
   check(
     'the experiments stand clear of the machine in their own band, at every window size',
     worstClearance >= OVERLAY_GAP,
@@ -312,9 +350,18 @@ for (const [name, ring] of [['collider', machine.ring], ['injector', injector.ri
     `${smallestPicture}..${biggestPicture} px across, allowed ${EVENT_CANVAS_MIN}..${EVENT_CANVAS_MAX}`,
   );
   check(
-    'and a wider window spends the room it gains on the picture',
+    'and both experiments are drawn at one scale, at every window size',
+    unequal.size === 0,
+    unequal.size === 0
+      ? 'the two pictures are the same size everywhere'
+      : `different on ${[...unequal].join(', ')}`,
+  );
+  check(
+    'and a much wider window spends the room it gains on the picture',
     large > small,
-    `${small} px across at 1280×860, ${large} px at 1920×1080 (was a flat 196)`,
+    `${small} px across at 1280×860, ${large} px at 2560×1440` +
+      ' (one scale for both means the band above the injector, which does not grow with the' +
+      ' window, sets both — so it buys picture in steps rather than continuously)',
   );
   check(
     'a card that had to take its floor size still barely touches the machine',
@@ -663,8 +710,12 @@ console.log('--- the button does not restart the beam ---');
       const straight = from.straights[x.line.config.kickerCell];
       const px = renderer.camera.len(arc.length);
       check(
+        // A device the eye can find, not a device drawn to scale. The floor came down from
+        // 20 px when the camera started fitting inside the title and the button bar, which
+        // costs the whole picture about a sixth of its size — the SPS kickers, the smallest
+        // of the four, went 22 → 19 px. Below about 15 they stop reading as objects.
         `${x.line.config.name}'s kicker is long enough to see`,
-        px > 20,
+        px > 15,
         `${px.toFixed(0)} px`,
       );
 
@@ -851,11 +902,17 @@ function twoBatches(forwardOffset: number, reverseOffset: number): World {
   return w;
 }
 
-/** The teal interaction-region strokes of the last frame, split by whether anybody collects them. */
+/**
+ * The interaction-region strokes of the last frame, split by whether anybody collects them.
+ *
+ * Beam-coloured now, not the mint green it used to be, and no wider than a beam: green as
+ * wide as the detector read as a lit volume rather than as two beams lying on each other.
+ * These two literals are that colour, and they must stay the two the renderer uses.
+ */
 function bandStrokes(): { collected: Point[][]; passing: Point[][] } {
   return {
-    collected: ctx.strokes.filter((s) => s.style.includes('170, 255, 225')).map((s) => s.points),
-    passing: ctx.strokes.filter((s) => s.style.includes('90, 190, 165')).map((s) => s.points),
+    collected: ctx.strokes.filter((s) => s.style.includes('150, 225, 255')).map((s) => s.points),
+    passing: ctx.strokes.filter((s) => s.style.includes('80, 170, 215')).map((s) => s.points),
   };
 }
 
@@ -939,7 +996,7 @@ function bandStrokes(): { collected: Point[][]; passing: Point[][] } {
   // are two of them and they are antipodal — and an experiment reaches its own half a turn
   // after the other reaches theirs. Drawing one tick had the far experiment flashing with
   // nothing marked anywhere near it.
-  const ticks = ctx.strokes.filter((s) => s.style.includes('150, 225, 210'));
+  const ticks = ctx.strokes.filter((s) => s.style.includes('150, 200, 235'));
   let apart = 0;
   if (ticks.length === 2) {
     const mid = (i: number): Point => [
@@ -955,6 +1012,44 @@ function bandStrokes(): { collected: Point[][]; passing: Point[][] } {
     ticks.length === 2 && apart > 300,
     `${ticks.length} ticks, ${apart.toFixed(0)} px apart`,
   );
+
+  // **Each event fades on its own age.** The two experiments are half a ring apart and an
+  // event display outlives the pass that made it by about forty times, so for most of a fade
+  // both are lit at once — and the alpha used to be taken per *species* over the whole
+  // picture, at the freshest event's age. So every flash at one experiment relit the fading
+  // one at the other, which is a thing the eye catches immediately and no number here did.
+  if (events > 0) {
+    const fresh = w.collisions[w.collisions.length - 1];
+    // The same event again at the other experiment, most of a fade older.
+    const other = w.detectors[1].ip;
+    w.collisions.push({ ...fresh, detector: 1, x: other.x, y: other.y, dx: other.dx, dy: other.dy, at: fresh.at - 800 });
+    ctx.strokes.length = 0;
+    drawFrame(w);
+    /** Strongest alpha among the track strokes drawn within 40 px of a vertex. */
+    const trackColour = ['255, 208, 130', '160, 220, 255', '200, 175, 255', '255, 130, 205'];
+    const alphaNear = (x: number, y: number): number => {
+      let best = 0;
+      for (const s of ctx.strokes) {
+        if (!trackColour.some((c) => s.style.includes(c))) continue;
+        const m = /,\s*([0-9.]+)\s*\)$/.exec(s.style);
+        if (!m) continue;
+        for (const p of s.points) {
+          if (Math.hypot(p[0] - renderer.camera.x(x), p[1] - renderer.camera.y(y)) < 40) {
+            best = Math.max(best, Number(m[1]));
+            break;
+          }
+        }
+      }
+      return best;
+    };
+    const near = alphaNear(fresh.x, fresh.y);
+    const far = alphaNear(other.x, other.y);
+    check(
+      'a fresh event at one experiment does not relight the fading one at the other',
+      far > 0 && far < near * 0.75,
+      `fresh ${near.toFixed(3)} against ${far.toFixed(3)} on an event 0.8 s older`,
+    );
+  }
 }
 
 // Where an event is drawn when the machine is *not* phased onto the interaction point. The
@@ -1369,6 +1464,120 @@ console.log('--- comet continuity ---');
   }
   check('the chain delivered batches during the run', spawns > 0, `${spawns} spawned`);
   check('no comet is ever drawn jumping across the picture', longest < 100, `longest segment ${longest.toFixed(1)} px`);
+}
+
+console.log('--- when it all goes wrong ---');
+{
+  // The catastrophe's whole expression is in the renderer: the picture shakes and goes red.
+  // Neither is visible to the physics check, and both are the loudest things this program
+  // does — a shake that leaked into the camera would walk the machine under the panels.
+  const w = new World();
+  w.attachBackend(new CpuBackend());
+  renderer.resize(w, { top: 0, bottom: 0 });
+  const quiet = renderer.machineBands(w);
+
+  ctx.translates.length = 0;
+  ctx.rects.length = 0;
+  drawFrame(w);
+  check(
+    'a calm machine is not translated at all',
+    ctx.translates.length === 0,
+    `${ctx.translates.length} translates`,
+  );
+  check(
+    'and nothing is washed red over it',
+    !ctx.rects.some((r) => stopsOf(r.style).some((c) => c.includes('255, 30, 24'))),
+    `${ctx.rects.length} full-canvas fills, none of them the alarm`,
+  );
+
+  // An alarm shakes the ground; only a catastrophe turns the lights red.
+  w.shakeGround(0.35);
+  ctx.translates.length = 0;
+  ctx.rects.length = 0;
+  for (let i = 0; i < 4; i++) drawFrame(w);
+  const alarmShake = Math.max(...ctx.translates.map(([x, y]) => Math.hypot(x, y)), 0);
+  check(
+    'an alarm moves the picture and does not tint it',
+    alarmShake > 0 && !ctx.rects.some((r) => stopsOf(r.style).some((c) => c.includes('255, 30, 24'))),
+    `worst offset ${alarmShake.toFixed(2)} px`,
+  );
+
+  w.shakeGround(1);
+  ctx.translates.length = 0;
+  ctx.rects.length = 0;
+  for (let i = 0; i < 12; i++) drawFrame(w, 1 / 240);
+  const worst = Math.max(...ctx.translates.map(([x, y]) => Math.hypot(x, y)), 0);
+  check(
+    'a catastrophe shakes the picture, and by a bounded amount',
+    worst > 0.5 && worst <= 8 * Math.SQRT2 + 1e-6,
+    `worst offset ${worst.toFixed(2)} px, of 8 px per axis — well inside OVERHANG_ALLOWED=${OVERHANG_ALLOWED}`,
+  );
+  check(
+    'and turns the tunnel lights red',
+    ctx.rects.some((r) => stopsOf(r.style).some((c) => c.includes('255, 30, 24'))),
+    `${ctx.rects.filter((r) => stopsOf(r.style).length > 0).length} gradient washes`,
+  );
+
+  // The one that would be a bug rather than an effect.
+  const shaken = renderer.machineBands(w);
+  check(
+    'the overlay does not shake with it',
+    Math.abs(shaken.injectorTop - quiet.injectorTop) < 1e-9 &&
+      Math.abs(shaken.injectorBottom - quiet.injectorBottom) < 1e-9 &&
+      Math.abs(shaken.rightIn(0, 400) - quiet.rightIn(0, 400)) < 1e-9,
+    'machineBands is derived from the camera, and the shake never touches the camera',
+  );
+}
+
+console.log('--- the mass spectrum, drawn ---');
+{
+  // The plot is the whole point of a long run, and nothing else in the app would notice it
+  // failing to draw. Same recording mock, its own canvas.
+  const { SpectrumView } = await import('../src/render/spectrum');
+  const { Analysis, HIGGS_MASS } = await import('../src/sim/analysis');
+  const plotCanvas = makeCanvas(240, 92);
+  const view = new SpectrumView(plotCanvas as unknown as HTMLCanvasElement);
+  const pctx = plotCanvas.ctx;
+  const a = new Analysis();
+
+  view.render(a.dimuon, 0, []);
+  check(
+    'an empty spectrum says so rather than drawing an empty box',
+    pctx.texts.some((t) => t.text.includes('no data')),
+    pctx.texts.map((t) => t.text).join(' '),
+  );
+
+  a.integrated = 0.05 * 1e39;
+  pctx.texts.length = 0;
+  pctx.strokes.length = 0;
+  pctx.fills.length = 0;
+  view.render(a.dimuon, a.integrated, [{ mass: 91.19, label: 'Z' }]);
+  const outline = pctx.fills.filter((f) => f.points.length >= a.dimuon.binCount * 2);
+  check(
+    'the histogram is drawn as one outline over every bin',
+    outline.length === 1,
+    `${outline.length} paths of ${a.dimuon.binCount * 2}+ points`,
+  );
+  const inside = outline[0]?.points.every(
+    ([x, y]) => x >= -1 && x <= 241 && y >= -1 && y <= 93,
+  );
+  check('and every point of it is inside the canvas', inside === true);
+  check(
+    'the peak that has been collected is labelled, and the axis is numbered',
+    pctx.texts.some((t) => t.text === 'Z') && pctx.texts.some((t) => t.text === 'GeV'),
+    pctx.texts.map((t) => t.text).join(' '),
+  );
+
+  // The Higgs window: no label until there is something to label, which is the difference
+  // between a measurement and a diagram of one.
+  pctx.texts.length = 0;
+  view.render(a.diphoton, a.integrated, []);
+  check(
+    'the Higgs is not named before the excess is there',
+    !pctx.texts.some((t) => t.text.includes('H')),
+    pctx.texts.map((t) => t.text).join(' '),
+  );
+  void HIGGS_MASS;
 }
 
 console.log(failures === 0 ? '\nall render checks passed' : `\n${failures} render check(s) FAILED`);

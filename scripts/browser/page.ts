@@ -70,7 +70,15 @@ export interface PageSession {
   close: () => Promise<void>;
 }
 
-export async function open(width: number, height: number): Promise<PageSession> {
+/**
+ * Opens the page.
+ *
+ * `quiet` — the default — appends `?quiet=1`, which switches the incident system off: a run
+ * that has to end with two beams colliding cannot afford a UFO in the middle of it, and at the
+ * real rates about a quarter of these runs would get one. Pass `false` to drive the machine
+ * the way a player gets it.
+ */
+export async function open(width: number, height: number, quiet = true): Promise<PageSession> {
   const server = await ensureServer();
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
@@ -87,7 +95,8 @@ export async function open(width: number, height: number): Promise<PageSession> 
   page.on('console', (m) => {
     if (m.type() === 'error' && !noise(m.text())) errors.push(m.text());
   });
-  await page.goto(server.url, { waitUntil: 'networkidle0', timeout: 30_000 });
+  const url = quiet ? `${server.url}${server.url.includes('?') ? '&' : '?'}quiet=1` : server.url;
+  await page.goto(url, { waitUntil: 'networkidle0', timeout: 30_000 });
   return {
     browser,
     page,
@@ -108,6 +117,22 @@ export async function press(page: Page, label: string): Promise<boolean> {
     (hit as HTMLButtonElement).click();
     return true;
   }, label);
+}
+
+/**
+ * Every button in the bar and whether it is greyed out.
+ *
+ * A greyed control is `aria-disabled` rather than `disabled` — it keeps its tooltip, which is
+ * where the reason is — so this reads the attribute the app actually sets. See
+ * `ui/controls.ts` for which controls may be greyed and which may never be.
+ */
+export async function controlStates(page: Page): Promise<Array<{ label: string; blocked: boolean }>> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('#controls button')).map((b) => ({
+      label: (b.textContent ?? '').trim(),
+      blocked: b.getAttribute('aria-disabled') === 'true',
+    })),
+  );
 }
 
 export const wait = (seconds: number): Promise<void> =>
@@ -169,12 +194,21 @@ export async function collide(page: Page, settle = 8): Promise<void> {
   }
   await press(page, 'ramp → 6.8 TeV');
   await until(page, 'panel-power', (t) => t.includes('flat top'), 30);
-  // Phase the crossing point onto an interaction point. It is on by default, but pressing it
-  // costs nothing and a run that starts out of phase collides nowhere.
+  // **Cog, and mean it.** Injection no longer waits for a phase — the phases it could reach
+  // were a coarse grid and hunting them was seconds of dead time — so a fresh fill collides
+  // nowhere until the crossing point is walked onto an interaction point, and that is what
+  // this button is. Matched on "no collisions" rather than on an experiment's name, which
+  // has changed once already.
   await press(page, 'auto');
+  await until(page, 'panel-physics', (t) => !t.includes('no collisions'), 60);
   // Both experiments have to have triggered on something or their panels are not on screen,
   // and with one batch per beam that only happens while both cover an IP — which comes round
   // when it comes round. A minute is long enough for every window size tried; less was not.
-  await until(page, 'panel-physics', (t) => !/IP7 luminosity\s*no collisions/.test(t), 60);
+  await until(
+    page,
+    'panel-physics',
+    (t) => !/hardest object\s*—/.test(t),
+    60,
+  );
   await wait(settle);
 }

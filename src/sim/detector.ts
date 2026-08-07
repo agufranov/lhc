@@ -41,6 +41,13 @@
 
 import { C_LIGHT } from './units';
 import type { Straight } from './lattice';
+import {
+  SPECIES_EM,
+  SPECIES_HEAVY,
+  SPECIES_KAON,
+  SPECIES_LEPTON,
+  SPECIES_MUON,
+} from './shower';
 
 /**
  * Bunches in one SPS batch, and how far apart they are.
@@ -139,11 +146,62 @@ export const INSERTION_HALF_LENGTH_F = 2.2;
 
 export interface DetectorConfig {
   id: string;
+  /** What is written on the cavern: the experiment. */
   name: string;
+  /** Which straight it stands in, as the machine names it — `P3`, `P7`. */
+  point: string;
   /** Machine the insertion belongs to. */
   machine: number;
   /** Straight section it sits in; the interaction point is at that straight's centre. */
   cell: number;
+  /**
+   * The species this experiment is built to catch better than the other one, and the one
+   * line that says why. See `TRIGGER_SPECIALTY_GAIN`.
+   */
+  specialty: readonly number[];
+  specialtyLabel: string;
+}
+
+/**
+ * How much an experiment's trigger favours the thing it was built around.
+ *
+ * Two general-purpose experiments record the same collisions, and they still do not keep
+ * the same events, because a trigger is built out of the detector it sits behind. CMS is a
+ * solenoid wrapped in muon chambers — the name is the design — and its muon triggers reach
+ * lower in pT than anybody else's; ATLAS's liquid-argon calorimeter is what its electron and
+ * photon menu is built on. So the same 5 GeV muon is a keeper at one point and a soft event
+ * at the other, and running both here shows the two panels filling with visibly different
+ * physics out of one beam.
+ *
+ * A real menu is a hundred lines of thresholds, prescales and isolation cuts. This is one
+ * multiplier on the pT that decides what is kept, which is the shape of the thing and not
+ * the substance of it — a stated departure, and the same kind as the drawing budgets.
+ */
+export const TRIGGER_SPECIALTY_GAIN = 1.8;
+
+/**
+ * The stream an event goes down: what the experiment thinks it just saw.
+ *
+ * A real readout does not write "an event"; it writes an event *into a stream*, named for
+ * the object that fired the trigger — single muon, electron/photon, jet, b-physics. That
+ * name is the whole of what particle identification is for, and it is the one thing an
+ * event display can say in two characters: this was kept because there was a muon in it.
+ */
+export function triggerStream(species: number): string {
+  switch (species) {
+    case SPECIES_MUON:
+      return 'single-μ';
+    case SPECIES_LEPTON:
+      return 'single-e';
+    case SPECIES_EM:
+      return 'γ';
+    case SPECIES_HEAVY:
+      return 'b-jet';
+    case SPECIES_KAON:
+      return 'strange';
+    default:
+      return 'jet';
+  }
 }
 
 /**
@@ -184,6 +242,8 @@ export interface KeptEvent {
   pileUp: number;
   /** Transverse momentum of the hardest object — what it was kept for. */
   score: number;
+  /** The stream it went down: what the experiment made of it. See `triggerStream`. */
+  stream: string;
   /** Inelastic interactions the experiment had seen when it recorded this one. */
   seen: number;
   /** `World.elapsed` when it was recorded, for the display's own flash. */
@@ -265,6 +325,27 @@ export class Detector {
   /** Candidates the trigger has been offered, and how many of them it wrote out. */
   candidates = 0;
   recorded = 0;
+  /**
+   * The hardest thing this experiment has ever recorded, and what it called it.
+   *
+   * Two general-purpose experiments on one beam are a competition whether anybody says so or
+   * not — they publish the same measurements and one of them gets there first — and since the
+   * triggers here really are different (`TRIGGER_SPECIALTY_GAIN`), the two records diverge on
+   * physics rather than on luck. The scoreboard in the HUD is these two numbers.
+   */
+  bestScore = 0;
+  bestStream = '';
+
+  /**
+   * What this experiment's menu makes of an object: the pT it is worth *to it*.
+   *
+   * The bar is one number and the detector behind it is not, so the same object is worth
+   * more at the point built to measure it — a muon at CMS, an electron or a photon at
+   * ATLAS. See `TRIGGER_SPECIALTY_GAIN`.
+   */
+  priority(species: number, pt: number): number {
+    return this.config.specialty.includes(species) ? pt * TRIGGER_SPECIALTY_GAIN : pt;
+  }
 
   /**
    * Offers a candidate to the trigger. Returns true if it was recorded.
@@ -272,13 +353,21 @@ export class Detector {
    * The first one is always taken — an empty display says nothing about the machine — and
    * after that it is the bar, which is the last thing kept and falls back towards
    * `TRIGGER_MIN_PT` over `TRIGGER_DECAY`.
+   *
+   * The bar is compared against the *weighted* pT, so the two experiments keep different
+   * events out of the same beam; what the panel prints is the real momentum.
    */
   offer(candidate: KeptEvent): boolean {
     this.candidates++;
-    if (this.kept !== null && candidate.score < this.threshold) return false;
+    const priority = this.priority(candidate.event.hardestSpecies, candidate.score);
+    if (this.kept !== null && priority < this.threshold) return false;
     this.kept = candidate;
-    this.threshold = Math.max(TRIGGER_MIN_PT, candidate.score);
+    this.threshold = Math.max(TRIGGER_MIN_PT, priority);
     this.recorded++;
+    if (candidate.score > this.bestScore) {
+      this.bestScore = candidate.score;
+      this.bestStream = candidate.stream;
+    }
     return true;
   }
 

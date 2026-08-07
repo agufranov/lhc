@@ -6,19 +6,33 @@ import {
   INSERTION_COOLING,
   SIGMA_INELASTIC,
 } from '../sim/detector';
+import { DISCOVERY_SIGMA, HIGGS_MASS } from '../sim/analysis';
 import { speciesName } from '../sim/shower';
+import { SpectrumView } from '../render/spectrum';
 import { magnetColor, rgba, clamp01 } from '../render/palette';
 import { verdictFor } from '../sim/damage';
 import { OPERATING_TEMPERATURE } from '../sim/powering';
 import { Readout } from './readout';
 import { EventPanel } from './eventPanel';
-import { clock, count, energyGeV, fixed, si } from './format';
+import { clock, count, duration, energyGeV, fixed, si } from './format';
 
 export interface FrameStats {
   fps: number;
   stepsThisFrame: number;
   frameMs: number;
 }
+
+/**
+ * Entries a peak needs before it is ticked off as rediscovered.
+ *
+ * Not a physical threshold — the plot draws whatever is there — but a claim needs enough to
+ * stand on, and a hundred events in a peak is where one stops being a wobble on a log plot.
+ */
+const PEAK_VISIBLE = 100;
+/** Lines of the chronicle kept on screen. It is a rail panel, not a terminal. */
+const LOG_LINES = 5;
+/** Wall seconds an alarm holds the ticker before it goes back to saying what is going on. */
+const ALARM_HOLD = 9;
 
 interface SectorRow {
   root: HTMLElement;
@@ -35,6 +49,20 @@ export class Hud {
   private sectors: SectorRow[] = [];
   private events: EventPanel[] = [];
   private eventRail: HTMLElement | null = null;
+
+  /** The run: the two spectra, the fill in progress, and the machine's own chronicle. */
+  private run!: Readout;
+  private dimuon!: SpectrumView;
+  private diphoton!: SpectrumView;
+  private report!: HTMLElement;
+  private reportRows!: Map<string, HTMLElement>;
+  private logRoot!: HTMLElement;
+  private ticker: HTMLElement | null = null;
+  /** How much of the chronicle is already on screen, so it is not rebuilt every frame. */
+  private loggedLines = 0;
+  private reportsShown = 0;
+  /** Exposure the spectra were last drawn at — they are redrawn when it has moved enough. */
+  private drawnAt = -1;
 
   constructor(world: World) {
     const machine = world.collider;
@@ -84,25 +112,25 @@ export class Hud {
     );
     this.physics.separator();
     for (const det of world.detectors) {
-      this.physics.row(`lumi-${det.config.id}`, `${det.config.name} luminosity`);
-      this.physics.row(`pairs-${det.config.id}`, `${det.config.name} bunch pairs`, 'colliding bunch pairs per turn; a nominal fill gives 2808');
+      this.physics.row(`lumi-${det.config.id}`, `${det.config.name} L`);
+      this.physics.row(`pairs-${det.config.id}`, `${det.config.name} pairs`, 'colliding bunch pairs per turn; a nominal fill gives 2808');
       this.physics.row(
         `heat-${det.config.id}`,
-        `${det.config.name} debris load`,
-        'collision debris sprays down the pipe into the superconducting magnets that squeeze the beams into the interaction point, and the cryogenics has to take it back out. Past its capacity there is no equilibrium — the cold mass simply climbs',
+        `${det.config.name} debris`,
+        `collision debris sprays down the pipe into the superconducting magnets that squeeze the beams into the interaction point, and the cryogenics has to take it back out — ${si(INSERTION_COOLING, 'W', 1)} of it, per insertion. Past that capacity there is no equilibrium: the cold mass simply climbs`,
       );
     }
     this.physics.separator();
     this.physics.row('pileup', 'pile-up', 'inelastic interactions in one bunch crossing');
     this.physics.row('rate', 'interaction rate');
-    this.physics.row('integrated', '∫L dt', 'summed over both insertions, on the machine clock');
-    this.physics.row('higgs', 'Higgs produced', 'sigma(pp -> H) is 55 pb at 13.6 TeV, so a nominal fill makes about one a second');
     this.physics.row(
       'trigger',
       'hardest object',
       'the highest-pT thing in the last event drawn — almost everything out of a collision is a soft pion, and what a hard track *is* is the part that depends on energy: strange, then charm and beauty, then an isolated lepton, which in practice means a W or a Z',
     );
     this.physics.row('burn', 'burn-off', 'protons the collisions have consumed, and what that does to the fill lifetime');
+
+    this.buildRun(world);
 
     this.power = new Readout(document.getElementById('panel-power')!, 'power');
     this.power.row('state', 'state');
@@ -326,6 +354,7 @@ export class Hud {
     }
 
     this.updatePhysics(world);
+    this.updateRun(world);
     this.updateInjector(world);
     for (const panel of this.events) panel.update(world);
     // The column itself, so an empty one takes no width from the picture at all.
@@ -341,6 +370,274 @@ export class Hud {
     this.compute.set('stepsframe', count(stats.stepsThisFrame));
     this.compute.set('cost', backend ? (backend.stats.msPerKStep * 1000).toFixed(1) : '—');
     this.compute.set('fps', stats.fps.toFixed(0), stats.fps < 45 ? 'warn' : undefined);
+  }
+
+  /**
+   * The run: the two plots, the fill in progress, and what has happened lately.
+   *
+   * Everything above this in the rail is a picture of the machine *now*. This is the only
+   * panel that accumulates — the spectra are a function of ∫L dt and survive every dump, the
+   * fill report closes an episode off, and the chronicle is what happened while you were
+   * looking at an event display. It is the answer to "the beams are colliding, now what".
+   */
+  private buildRun(world: World): void {
+    this.run = new Readout(document.getElementById('panel-run')!, 'run');
+
+    const dimuonCanvas = plot(
+      'μ⁺μ⁻ mass · log–log',
+      'Every pair of muons the experiments recorded, binned by the mass of the thing that ' +
+        'must have decayed to make them: m² = 2·pT₁pT₂·(cosh Δη − cos Δφ).\n\n' +
+        'This is the most reproduced plot in particle physics, and the first thing a new ' +
+        'detector does is rediscover it. The peaks are, left to right: the J/ψ (a charm ' +
+        'quark bound to its antiquark, 1974), the Υ (the same for beauty, 1977), and the Z ' +
+        '(1983). Between them is the Drell–Yan continuum — a quark and an antiquark ' +
+        'annihilating to a virtual photon — which is a background here and a measurement of ' +
+        'the proton in its own right.\n\n' +
+        'It is computed from the integrated luminosity and real cross-sections, not from the ' +
+        'handful of events this simulation draws, and it does not reset when the beams are ' +
+        'dumped. The data is on tape.',
+    );
+    this.run.append(dimuonCanvas);
+    this.dimuon = new SpectrumView(dimuonCanvas.querySelector('canvas')!);
+    this.run.row('exposure', '∫L dt', 'summed over both insertions, on the machine clock — the number every plot here is a function of');
+    this.run.row(
+      'records',
+      'rediscovered',
+      'what this run has collected enough of to see: a peak is ticked once it stands clear ' +
+        'of the continuum under it. Everything here was somebody’s Nobel Prize.',
+    );
+
+    const diphotonCanvas = plot(
+      'γγ mass · the Higgs window',
+      'Two photons, and nothing else. A Higgs boson decays this way about twice in a ' +
+        'thousand, which is rare enough that the entire measurement is a bump of a few ' +
+        'hundred events on a smooth background of tens of thousands — and the *only* reason ' +
+        'it can be seen at all is calorimeter resolution: 1.3 % puts the signal in a 3 GeV ' +
+        'window while the background is spread over sixty.\n\n' +
+        'The bump grows as √(∫L dt), which is why this is a reason to keep the machine ' +
+        'running rather than to watch one collision.',
+    );
+    this.run.append(diphotonCanvas);
+    this.diphoton = new SpectrumView(diphotonCanvas.querySelector('canvas')!);
+    this.run.row(
+      'higgs',
+      'γγ excess',
+      'signal over the square root of the background in a ±1.4σ window around 125 GeV. ' +
+        'Five sigma is what particle physics calls a discovery — a one in 3.5 million chance ' +
+        'that a fluctuation of the background alone would look like this.',
+    );
+    this.run.separator();
+    this.run.row('fill', 'fill', 'the fill in progress: how long it has been up and what it has collected');
+    this.run.row(
+      'optimum',
+      'dump when',
+      'a beam decaying with lifetime τ, and a turnaround T before the next fill collides, ' +
+        'give the most average luminosity if each fill is run for √(τ·T). That is the real ' +
+        'result the real machine plans 10–15 hour fills with; the numbers in it here are ' +
+        'this machine’s own — its lifetime, and the turnaround you have actually been taking.',
+    );
+    // Short labels, both of them: the value column is what has something to say here, and
+    // `ATLAS / CMS` wrapped its own label onto two lines to say nothing the value did not.
+    this.run.row(
+      'score',
+      'kept',
+      'events each experiment’s trigger has written out, and the hardest object either of ' +
+        'them has ever recorded. They see the same collisions and keep different ones, ' +
+        'because a trigger is built out of the detector behind it.',
+    );
+    this.run.row(
+      'safety',
+      'safety',
+      'The LHC Safety Assessment Group, 2008. Every proposed catastrophe has the same ' +
+        'answer: cosmic rays have been running this experiment on the Earth, the Moon and ' +
+        'every star for billions of years, at energies this machine cannot reach, and all of ' +
+        'them are still here. A microscopic black hole would need extra dimensions to form ' +
+        'at all and would evaporate in about 1e−27 s.',
+    );
+
+    // The last fill, closed off — an episode needs an end or the session is one long
+    // stationary state. Hidden until there has been one.
+    this.report = document.createElement('div');
+    this.report.className = 'report';
+    this.report.hidden = true;
+    const head = document.createElement('div');
+    head.className = 'report-head';
+    this.report.append(head);
+    const grid = document.createElement('div');
+    grid.className = 'report-grid';
+    this.report.append(grid);
+    this.reportRows = new Map([['head', head]]);
+    for (const [key, label] of [
+      ['integrated', '∫L dt'],
+      ['stable', 'stable beams'],
+      ['peak', 'peak L'],
+      ['efficiency', 'efficiency'],
+      ['trouble', 'interruptions'],
+    ] as const) {
+      const k = document.createElement('span');
+      k.textContent = label;
+      const v = document.createElement('b');
+      v.textContent = '—';
+      grid.append(k, v);
+      this.reportRows.set(key, v);
+    }
+    this.run.append(this.report);
+
+    this.logRoot = document.createElement('div');
+    this.logRoot.className = 'log';
+    this.run.append(this.logRoot);
+
+    this.ticker = document.getElementById('ticker');
+    this.setTicker(quietLine(world), 'notice');
+  }
+
+  /** The one line the machine says out loud, over the picture. */
+  private setTicker(text: string, severity: string): void {
+    if (!this.ticker) return;
+    if (this.ticker.textContent !== text) this.ticker.textContent = text;
+    const cls = `ticker sev-${severity}`;
+    if (this.ticker.className !== cls) this.ticker.className = cls;
+  }
+
+  private updateRun(world: World): void {
+    const a = world.analysis;
+    const fb = a.integrated / FEMTOBARN_INVERSE;
+
+    // The plots. Redrawn when the exposure has moved by a per cent — at 60 fps an identical
+    // histogram is a hundred and forty strokes a second of nothing changing.
+    this.dimuon.resize();
+    this.diphoton.resize();
+    if (a.integrated > this.drawnAt * 1.01 || this.dimuon.dirty || this.diphoton.dirty) {
+      this.drawnAt = a.integrated;
+      const marks: Array<{ mass: number; label: string }> = [];
+      for (const s of a.dimuon.sources) {
+        // Labelled only once its own peak has something in it: a plot that names a Z it has
+        // not collected is a diagram of what one looks like, not a measurement.
+        if (s.label && a.dimuon.expected(s.name, a.integrated) > PEAK_VISIBLE) {
+          marks.push({ mass: s.mass, label: s.label });
+        }
+      }
+      this.dimuon.render(a.dimuon, a.integrated, marks);
+      const excess = a.higgsWindow;
+      this.diphoton.render(
+        a.diphoton,
+        a.integrated,
+        excess.sigma > 1 ? [{ mass: HIGGS_MASS, label: 'H → γγ' }] : [],
+      );
+    }
+
+    this.run.set(
+      'exposure',
+      fb > 1e-4 ? `${fb.toFixed(fb > 1 ? 2 : 4)} fb⁻¹` : 'nothing yet',
+      fb > 1e-4 ? undefined : 'idle',
+    );
+    // Ticked ones first and the rest after, rather than a mark against every name: the column
+    // is 260 px and "J/ψ ✓ · ψ' ✓ · Υ ✓ · Z ✓ · H —" wraps onto two lines of it.
+    const named = a.dimuon.sources.filter((s) => s.label);
+    const got = named
+      .filter((s) => a.dimuon.expected(s.name, a.integrated) > PEAK_VISIBLE)
+      .map((s) => s.label);
+    const missing = named
+      .filter((s) => a.dimuon.expected(s.name, a.integrated) <= PEAK_VISIBLE)
+      .map((s) => s.label);
+    if (a.discovered) got.push('H');
+    else missing.push('H');
+    const excess = a.higgsWindow;
+    this.run.set(
+      'records',
+      got.length > 0 ? `${got.join(' ')} ✓${missing.length > 0 ? `  ·  ${missing.join(' ')} —` : ''}` : 'nothing yet',
+      a.discovered ? 'warn' : got.length > 0 ? undefined : 'idle',
+    );
+    this.run.set(
+      'higgs',
+      excess.sigma < 0.2
+        ? '—'
+        : `${excess.sigma.toFixed(1)}σ · ${excess.signal.toFixed(0)} on ${si(excess.background, '', 2)}`,
+      excess.sigma >= DISCOVERY_SIGMA ? 'warn' : excess.sigma > 2 ? 'hot' : excess.sigma < 0.2 ? 'idle' : undefined,
+    );
+
+    // The fill in progress, and when to end it.
+    const fill = world.fill;
+    if (fill) {
+      this.run.set(
+        'fill',
+        `#${fill.index} · ${duration(world.fillAge)} up · ${(fill.integrated / FEMTOBARN_INVERSE).toFixed(4)} fb⁻¹`,
+        fill.incidents > 0 ? 'hot' : undefined,
+      );
+    } else {
+      this.run.set('fill', world.fillHistory.length > 0 ? 'no beam — refill' : 'no beam yet', 'idle');
+    }
+    const optimum = world.optimumFillLength;
+    if (!fill) {
+      this.run.set('optimum', '—', 'idle');
+    } else if (!isFinite(optimum)) {
+      this.run.set('optimum', 'nothing is burning yet', 'idle');
+    } else {
+      const left = optimum - world.fillAge;
+      this.run.set(
+        'optimum',
+        left > 0
+          ? `after ${duration(optimum)} — ${duration(left)} to go`
+          : `${duration(-left)} past it — dump it`,
+        left > 0 ? undefined : 'warn',
+      );
+    }
+
+    const [a1, a2] = world.detectors;
+    if (a1 && a2) {
+      const best = Math.max(a1.bestScore, a2.bestScore);
+      this.run.set(
+        'score',
+        `${a1.recorded} / ${a2.recorded}` +
+          (best > 0
+            ? ` · best ${best.toFixed(0)} GeV ${a1.bestScore >= a2.bestScore ? a1.config.name : a2.config.name}`
+            : ''),
+        a1.recorded + a2.recorded > 0 ? undefined : 'idle',
+      );
+    }
+    // The tooltip carries the actual argument; the line is a joke that happens to be true.
+    this.run.set('safety', 'world still here', 'idle');
+
+    // The last fill, and the chronicle. Both are appends, so neither is rebuilt per frame.
+    if (world.fillHistory.length > this.reportsShown) {
+      this.reportsShown = world.fillHistory.length;
+      const r = world.fillHistory[world.fillHistory.length - 1];
+      const cycle = r.endedAt - r.startedAt + (r.turnaround || world.turnaround);
+      this.report.hidden = false;
+      this.reportRows.get('head')!.textContent = `fill ${r.index} — ${r.reason}`;
+      this.reportRows.get('integrated')!.textContent =
+        `${(r.integrated / FEMTOBARN_INVERSE).toFixed(4)} fb⁻¹`;
+      this.reportRows.get('stable')!.textContent = duration(r.stableSeconds);
+      this.reportRows.get('peak')!.textContent =
+        r.peakLuminosity > 1e28 ? `${r.peakLuminosity.toExponential(1)} cm⁻²s⁻¹` : '—';
+      // The number the operations group is actually judged on: of all the time this fill
+      // cost, including getting the beam back afterwards, how much of it was colliding.
+      this.reportRows.get('efficiency')!.textContent =
+        cycle > 0 ? `${((r.stableSeconds / cycle) * 100).toFixed(0)} % of the cycle` : '—';
+      this.reportRows.get('trouble')!.textContent =
+        r.incidents + r.quenches > 0
+          ? `${plural(r.incidents, 'incident')} · ${plural(r.quenches, 'quench', 'quenches')}`
+          : 'clean';
+    }
+
+    while (this.loggedLines < world.chronicle.length) {
+      const entry = world.chronicle[this.loggedLines++];
+      const line = document.createElement('div');
+      line.className = `log-line log-${entry.kind} sev-${entry.severity}`;
+      line.textContent = `${clock(entry.at)}  ${entry.text}`;
+      this.logRoot.append(line);
+      while (this.logRoot.childElementCount > LOG_LINES) this.logRoot.firstElementChild?.remove();
+    }
+    // The chronicle is capped in the world too, so the count can go down under this one.
+    if (this.loggedLines > world.chronicle.length) this.loggedLines = world.chronicle.length;
+
+    const alarm = world.alarm;
+    if (alarm && world.elapsed - alarm.at < ALARM_HOLD) {
+      this.setTicker(alarm.text, alarm.severity);
+    } else if (alarm) {
+      world.alarm = null;
+      this.setTicker(quietLine(world), 'notice');
+    }
   }
 
   /**
@@ -399,11 +696,14 @@ export class Hud {
       );
       this.physics.set(
         `heat-${det.config.id}`,
+        // Short enough for one line: the value used to be "68.60 W of 1.8 kW · 1.90 K" and
+        // wrapped, leaving a stranded "K" on a line of its own in a 260 px column. What the
+        // cooling capacity is stays in the tooltip, where a number that never changes belongs.
         det.quenched
           ? `QUENCH — ${det.temperature.toFixed(0)} K`
           : det.debrisPower > 1
-            ? `${si(det.debrisPower, 'W', 2)} of ${si(INSERTION_COOLING, 'W', 1)} · ${det.temperature.toFixed(2)} K`
-            : `cold — ${det.temperature.toFixed(2)} K`,
+            ? `${si(det.debrisPower, 'W', 1)} · ${det.temperature.toFixed(2)} K`
+            : `cold · ${det.temperature.toFixed(2)} K`,
         det.quenched ? 'warn' : det.thermalLoad > 0.05 ? 'hot' : det.debrisPower > 1 ? undefined : 'idle',
       );
     }
@@ -496,7 +796,7 @@ export class Hud {
           ? 'FIRING'
           : e.state === 'armed'
             ? e.waitingForBucket
-              ? 'armed — holding for the bucket'
+              ? 'armed — holding for a free bucket'
               : 'armed — waiting for the bunch'
             : e.circuit && !e.circuit.enabled
               ? 'dipoles off'
@@ -508,4 +808,48 @@ export class Hud {
       );
     }
   }
+}
+
+/** `1 incident`, `2 incidents` — a readout that says "1 incidents" reads as a bug. */
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** A captioned plot: the canvas, and the one line saying what is on its axes. */
+function plot(caption: string, hint: string): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'plot';
+  const canvas = document.createElement('canvas');
+  canvas.className = 'plot-view';
+  canvas.title = hint;
+  const cap = document.createElement('div');
+  cap.className = 'plot-caption';
+  cap.textContent = caption;
+  cap.title = hint;
+  wrap.append(canvas, cap);
+  return wrap;
+}
+
+/**
+ * What the ticker says when nothing is wrong: the next thing worth doing.
+ *
+ * A status line that only speaks up for alarms is a status line that is blank most of the
+ * time, and this is a machine with an order of operations — so when it is quiet it says where
+ * in that order you are.
+ */
+function quietLine(world: World): string {
+  if (world.collider.quenchedCount > 0) return 'a sector is quenched — click the orange arc to start it cooling';
+  if (world.fill === null) {
+    return world.bunchesIn(1) > 0
+      ? 'the injector has beam — ramp it to 450 and extract into a ring'
+      : 'the collider is empty — fill the injector';
+  }
+  let lumi = 0;
+  for (const det of world.detectors) lumi += det.luminosity;
+  if (lumi <= 0) {
+    return world.collider.rampFraction < 0.98
+      ? 'beam in the collider — ramp it, then cog the crossing point onto an experiment'
+      : 'flat top, nothing colliding — cog the crossing point onto an experiment';
+  }
+  return `stable beams — ${(lumi * 2).toExponential(1)} cm⁻²s⁻¹ into the two experiments`;
 }

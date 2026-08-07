@@ -88,11 +88,24 @@ Three things follow from asking it per band rather than once:
   lines are reported (`linesRightIn`) and not obeyed.
 
 The picture then takes what is left, bounded by a floor (`EVENT_CANVAS_MIN` 196, what a
-twenty-two-layer barrel stays readable at) and a ceiling (320). **A card is as tall as the
-taller of its two columns**, and that is usually the numbers, not the picture: see
-`EVENT_SIDE_HEIGHT` in `layout.ts` for the wrapping measurements and why the column is 210 px
-wide. `main.ts` republishes the boxes each frame; it is a comparison unless something moved.
-Floor and not round on a half pixel — rounding up borrows it from the clearance.
+twenty-two-layer barrel stays readable at) and a ceiling (`EVENT_CANVAS_MAX` 240 — it was 320,
+which let a card grow to nearly four hundred pixels and stand over most of a band for no gain
+in legibility). **A card is as tall as the taller of its two columns**, and that is now always
+the picture: the numbers are five one-line values and a one-line legend, measuring 120 px
+against a 248 px column — see `EVENT_SIDE_HEIGHT` in `layout.ts`, which carries the wrapping
+measurements. It used to be the other way round, with values wrapping to three lines and the
+column 60 px taller than the picture beside it. `main.ts` republishes the boxes each frame; it
+is a comparison unless something moved. Floor and not round on a half pixel — rounding up
+borrows it from the clearance.
+
+**Both pictures are the same size, and that costs something.** They are two views of the same
+barrel at the same radius, read one against the other, so at different sizes the same detector
+is two different circles and a track that reaches the muon chambers in one looks longer than
+the one that does in the other. So the pair is sized twice: each against its own band, and
+then both at the smaller of the two. The cost is that the band above the injector governs, and
+that band does not grow with the window — the machine grows into it — so a wider window buys
+picture in steps rather than continuously, and 196 px is what most windows get. `check:render`
+asserts the two are equal at every size and prints the steps.
 
 Where a window is too narrow to hold a readable card beside the readouts, the card takes its
 floor size and is allowed to reach `OVERHANG_ALLOWED` (40 px) over an arc; past that it
@@ -104,15 +117,18 @@ Measured by `check:render`, which sweeps window sizes and prints the table (`ban
 
 | window | band above | band below | card left | picture, top / bottom |
 | --- | --- | --- | --- | --- |
-| 1280×860 | 820 | 848 | 822 | 196 / 196 (retreated) |
-| 1440×900 | 910 | 940 | 945 | 233 / 214 |
-| 1919×906 | 1143 | 1181 | 1160 | 221 / 196 |
-| 1920×1080 | 1144 | 1234 | 1161 | 221 / 293 |
-| 2560×1440 | 1554 | 1653 | 1702 | 320 / 320 (ceiling) |
+| 1280×860 | 774 | 811 | 784 | 196 / 196 (retreated) |
+| 1440×900 | 872 | 904 | 921 | 219 / 219 |
+| 1600×900 | 958 | 985 | 1072 | 228 / 228 |
+| 1919×906 | 1092 | 1141 | 1147 | 196 / 196 |
+| 1920×1080 | 1090 | 1171 | 1148 | 196 / 196 |
+| 2560×1440 | 1443 | 1559 | 1744 | 240 / 240 (ceiling) |
+
+The camera it sweeps is fitted the way the app fits it — inside the title and the button bar
+(`machineBorders`) — because that is what decides where the injector's band falls.
 
 And by `check:page`, which measures the boxes the browser really laid out. At 1919×906: cards
-469×268 at (1160, 16) and 442×266 at (1185, 557), both readouts whole, nothing overlapping
-anything.
+480×241 at (1147, 16) and (1147, 582), both readouts whole, nothing overlapping anything.
 
 ## The overlay must not be drawn on top of anything, and that is checked
 
@@ -138,9 +154,19 @@ one thing a column of numbers may do.
 
 `CAMERA_MARGIN` is the other half of the machine's side of it. Dropping it from 96 to 80 makes
 the picture bigger — the collider's half-aperture goes 17.5 → 18.3 px — and it cannot go much
-further, because the picture is centred and every pixel of margin removed pushes that arc
-closer to the panels. The clearance is measured rather than assumed, so the next person to want
-a bigger picture will be told exactly how much is left.
+further, because every pixel of margin removed pushes the right-hand arc closer to the panels.
+The clearance is measured rather than assumed, so the next person to want a bigger picture will
+be told exactly how much is left.
+
+**The four borders are not equal, and the machine is centred in what they leave.** The window
+is not empty around the picture: the title is over the top of it and the button bar — one row,
+or two under about 1500 px — over the bottom, so a complex centred in the *window* puts its
+lowest sector labels behind the buttons, which is where they were on anything under about
+1000 px tall. `Renderer.resize` takes those two measured heights (`machineBorders`, the same
+numbers the rails start at) and adds `LABEL_ROOM` = 48 px, because the sector, point and
+experiment names are drawn 34–40 px *outside* the tunnel wall and are therefore not inside the
+bounds being fitted at all. The sides keep `CAMERA_MARGIN`. It costs perhaps a tenth of the
+ring's drawn size and buys back the bottom of the machine.
 
 The event display shares its species colours with
 the machine renderer (`SPECIES_STYLE` in `palette.ts`) and its geometry with the cascade
@@ -172,6 +198,61 @@ Two traps found writing those:
 - **a lit muon chamber is stroked in the same white as a lepton track**, on purpose, and
   records as a one-point arc. A filter that picked track batches by colour alone counted it and
   reported half a segment.
+
+## What a control may be greyed out for
+
+One rule, in `ui/controls.ts`: **a control is greyed only when pressing it would do nothing at
+all.** Not when it would do something bad — a machine that refuses the interesting mistakes is
+a machine with nothing to find out in it.
+
+So the ramps grey when the machine is already programmed for the energy they ask for
+(`setTargetEnergy` is idempotent), filling greys while the chain is already delivering
+(`requestFill` returns immediately), and the three cogging controls grey with fewer than two
+beams on the orbit (`World.canCog` — there is no crossing point to move, and the readout beside
+it says `needs both beams`). **The kickers are never greyed**, injection or dump: arming one
+into a collider that has ramped is the single most instructive press in the toy, and charging a
+kicker before there is a beam for it is a thing an operator may want to do.
+
+Three things this had to get right:
+
+- **greyed is `aria-disabled`, not `disabled`.** A disabled button fires no mouse events, so it
+  shows no tooltip — and the tooltip is where the reason is. The class carries the look, the
+  handlers refuse the press, and the title becomes *reason, then what the control does*.
+- **greying is a view and must not write to the model.** The first version cancelled what a
+  control was doing as it went dead — auto-cogging switched off when the beams went away — which
+  is the same shape as a bug this machine has already had (`collisions.md`: the loop switching
+  itself off because a snapshot lost a bunch for a frame). It is gone. A held trim is let go by
+  its own `mouseup`, which still arrives, precisely because the button is not `disabled`.
+- **the predicate must not flicker**, being asked once a frame. `canCog` is geometric, like the
+  luminosity test and for the same reason; `check` measures it at 1800 frames of 1800 with two
+  beams up, and a control that went dead for one frame in a run would show there.
+
+`check:page` reads `aria-disabled` off the real bar in both states — an empty collider and a
+ramped colliding one — and asserts the kickers are live in both.
+
+## When it all goes wrong: the shake and the tint
+
+The two loudest things this renderer can do, and both belong to `interconnect` alone.
+
+**The shake is applied to the drawing and never to the camera.** `machineBands` is derived from
+the camera and the whole overlay is derived from that, so a shake in the camera would jitter
+every panel in the window and could walk a card onto the machine — the one thing the layout may
+not do. So `render` translates the context after the background is painted (before it, and the
+shake drags an unpainted edge across the picture) and restores before the tint.
+`SHAKE_PIXELS` = 8 per axis, well inside `OVERHANG_ALLOWED` = 40, and `check:render` asserts both
+the bound and that the bands do not move.
+
+**The tint is keyed on the shake, not on the alarm.** An alarm shakes by 0.35 and a catastrophe
+by 1, so a threshold at 0.45 belongs to the catastrophe without needing to know which it was. It
+used to ask what the banner was saying — and the banner had already moved on to the fill ending.
+See `lessons.md`.
+
+The **run panel** (the spectra, the fill report, the chronicle) is at the top of the *right*
+rail, and that is measured rather than tasteful: the left rail is already ~85 px over a 906 px
+window with BEAM and PHYSICS in it, and those are the readouts you operate against. The
+**ticker** is inside the title block, because the camera is fitted against that block's measured
+height — so the machine makes room for it by itself — and it is a fixed height whatever it says,
+or the picture would resize every time something went wrong. Both are argued in `running.md`.
 
 ## Traps
 

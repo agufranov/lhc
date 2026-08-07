@@ -42,6 +42,21 @@ export function clock(seconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+/**
+ * A span of machine time, at the coarsest unit that still says something: `40 s`, `12 min`,
+ * `3.4 h`.
+ *
+ * `clock` is for a timeline — where you are — and reads as a clock. This is for a *duration*
+ * compared against another duration, where 3:27:31 is three glyphs of noise and "3.4 h" is
+ * the answer. Both are in the run panel, side by side, doing different jobs.
+ */
+export function duration(seconds: number): string {
+  const s = Math.max(0, seconds);
+  if (s < 90) return `${s.toFixed(0)} s`;
+  if (s < 5400) return `${(s / 60).toFixed(0)} min`;
+  return `${(s / 3600).toFixed(1)} h`;
+}
+
 export function count(value: number): string {
   return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }

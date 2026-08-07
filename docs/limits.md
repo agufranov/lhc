@@ -41,16 +41,28 @@ tracked in it.
   inside one and no way to lose part of it. Its 234 bunches exist only as a number: they set
   its 1754 m length, which is what the whole collision rule is built on, and they are what
   the bunch-pair count counts.
-- **Injection lands on a 430 m grid and cogging is trimmed at 4 %.** The grid is real — it is
-  what the LHC being 27/7 of the SPS does — but a real machine does not settle for landing
-  anywhere in the overlap, and a real cogging trim is parts per million over minutes rather
-  than four per cent over seconds. Both are stated where they are made.
-- **The detectors are at P3 and P7, not P1 and P5**, because the dump lines and both
-  injections have taken every other antipodal pair of straights. They are named for their
-  points so nothing claims to be ATLAS or CMS. The one straight that causes this is the
-  dumps': `DUMP_CELL` puts them at P5 where the real ones leave P6, and moving them there
-  would free P1/P5 for the experiments — at the cost of re-checking that the absorbers still
-  stand clear of the ring, which is what that constant was chosen against.
+- **Injection does not aim at all, and cogging is trimmed at 4 % — 14 % while the automatic
+  loop is still far out.** A real fill is injected onto chosen buckets and then cogged; here
+  the reachable phases are a 430 m grid (which is real — it is what the LHC being 27/7 of the
+  SPS does) and hunting that grid was seconds of dead time, so the kicker fires as soon as it
+  may and cogging does all the aiming. A real cogging trim is parts per million over minutes
+  rather than per cent over seconds. All of it is stated where it is made; see
+  `collisions.md` for the measurements.
+- **ATLAS and CMS are at P3 and P7, not P1 and P5.** The dump lines and both injections have
+  taken every other antipodal pair of straights, so the address is wrong and the names are
+  right — an unnamed box identifies nothing, and what the two experiments are better at than
+  each other is modelled rather than asserted (see below). Both are drawn and printed with
+  their point beside them, `ATLAS · P3`, so the substitution is never hidden. The one straight
+  that causes it is the dumps': `DUMP_CELL` puts them at P5 where the real ones leave P6, and
+  moving them there would free P1/P5 for the experiments — at the cost of re-checking that the
+  absorbers still stand clear of the ring, which is what that constant was chosen against.
+- **A trigger menu is one multiplier.** `TRIGGER_SPECIALTY_GAIN` = 1.8 on the pT of the
+  species an experiment was built around — muons for CMS, e/γ for ATLAS — which is why the two
+  panels fill with different physics out of one beam. The asymmetry is real and famous; a real
+  menu is a hundred lines of thresholds, prescales and isolation cuts, and this has the shape
+  of that and none of the substance. The stream names on the panel (`single-μ`, `b-jet`, …) are
+  a classification of the hardest object and nothing more: no isolation is required, no
+  invariant mass is formed.
 - **A detector is drawn twenty times its true size**, and is therefore a *stretch* of ring in
   this picture rather than a point on it. That is what makes "the part of the interaction
   region inside a detector" and "where in the detector a vertex is" mean anything at all; on
@@ -108,16 +120,44 @@ tracked in it.
   detection is stretched from ~10 ms to something visible. Both are marked in `powering.ts`.
 - **A quench takes ~16 MJ** because the deposit is spread over the whole 4235 t string, so a
   450 GeV batch never quenches anything. See `impacts.md` for why that trade was taken.
+- **The mass spectra are a simulation of the measurement, not of the events.** They are computed
+  from ∫L dt and real cross-sections rather than filled from the collisions this simulation
+  draws — which is the honest choice, since a cascade is built for about one collision per pass
+  and a histogram of *those* would be a picture of the drawing budget. What that costs: the
+  acceptance and efficiency of a real detector are folded into one effective cross-section per
+  source instead of being modelled per pT and rapidity; there is no reconstruction, no
+  combinatorial background from mispaired tracks, and no continuum shape fitted to anything. And
+  the event display can never show you a Z, because the generator that makes the displays does
+  not know about resonances at all. The masses, the widths, the resolutions and the ratios
+  between the sources are real.
+- **`HIGGS_BOOST` is 4×.** At the true rate a five-sigma γγ excess wants some tens of fb⁻¹,
+  which is hours of play at a nominal fill and days at the one or two batches a session usually
+  runs; boosted, it lands at 1.3 fb⁻¹ — about five minutes of nominal running or an hour at one
+  batch each way. `check` prints the honest exposure beside it every run. It is the same kind of
+  budget as the rare species in an event display.
+- **Incident rates are a game budget with a real shape.** The MTBFs are the real machine's order
+  of magnitude — a UFO dumps the LHC a couple of dozen times against ~1500 hours of stable beams,
+  RF and cryogenics are next — but they are quoted per hour of *machine* time, which at 200×
+  comes to an interruption every minute or two of play. That is tuned to a session, not measured.
+  `interconnect` is the 2008 accident and is once per 6000 hours; what follows from it here is
+  three quenched sectors and a recovery, not fourteen months and fifty-three damaged magnets.
+- **A vacuum fault consumes beam, and it is the only thing besides collisions that does.**
+  Beam–gas scattering really does take protons out of a fill, so this is a real mechanism, but
+  it is one multiplier on the burn-off rate rather than a pressure profile with a lifetime
+  computed from it. Like burn-off it takes population only: the protons still circulating are
+  exactly as energetic, and the drawing rule is unchanged.
 - **A window under about 1700 px wide cannot hold the overlay the machine deserves.** The
   experiments' cards need ~440 px beside the readouts' 260 and there is not that much room
   outside the collider's arc; below it the cards retreat into the readout column and the
   readouts scroll, which is the old behaviour and the reason the layout was rewritten. What is
   guaranteed at every size is that nothing is drawn on top of anything — `check:page` asserts
   that at 1280×860 too.
-- **The left-hand rail scrolls on a short window.** A filled beam readout, the physics panel
-  and the compute panel want about 1020 px of column, and a 906 px window has 768. It scrolls
-  rather than overlapping, which is what it used to do instead; `check:page` prints how much
-  is hidden and does not fail on it.
+- **Both rails scroll on a short window.** A filled beam readout, the physics panel and the
+  compute panel want about 1020 px of column, and a 906 px window has 768; the right rail gained
+  the run panel and is now about 490 px over as well. They scroll rather than overlapping, which
+  is what they used to do instead. `check:page` prints how much is hidden and does not fail on
+  it — what it *does* fail on is a **panel** whose own content is scrolled away, which is the
+  flexbox crushing it and is the bug that shipped.
 - **A card may reach up to 40 px over an arc** (`OVERHANG_ALLOWED`) when its band is too narrow
   for a readable picture, and it may cover a transfer line freely — rings are treated as hard
   obstacles and lines as soft. Argued in `rendering.md`; the alternative was hiding readouts.

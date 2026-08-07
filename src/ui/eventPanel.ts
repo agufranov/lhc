@@ -25,10 +25,8 @@
 import type { Detector } from '../sim/detector';
 import type { World } from '../sim/world';
 import {
+  BARREL,
   DETECTOR_RADIUS_M,
-  EM_SAMPLINGS,
-  HAD_SAMPLINGS,
-  MUON_STATIONS,
   SPECIES_EM,
   SPECIES_HADRON,
   SPECIES_HEAVY,
@@ -36,7 +34,6 @@ import {
   SPECIES_LEPTON,
   SPECIES_MUON,
   SPECIES_NEUTRON,
-  speciesName,
 } from '../sim/shower';
 import { EventDisplay } from '../render/eventDisplay';
 import { Readout } from './readout';
@@ -79,7 +76,9 @@ export class EventPanel {
     root.hidden = true;
 
     const h = document.createElement('h2');
-    h.textContent = `${detector.config.name} — event display`;
+    // Named, with its point beside it: the experiments here are the real ones and the
+    // straights they stand in are not theirs, so the picture says both. See `DETECTOR_CELLS`.
+    h.textContent = `${detector.config.name} · ${detector.config.point}`;
     root.append(h);
 
     const canvas = document.createElement('canvas');
@@ -112,7 +111,16 @@ export class EventPanel {
     this.rows = new Readout(side, '');
     // The Readout writes its own (empty) heading; drop it, the panel already has one.
     side.querySelector('h2')?.remove();
-    this.rows.row('kept', 'triggered on', 'the hardest object in the event, which is what an experiment would have kept it for');
+    this.rows.row(
+      'kept',
+      'trigger',
+      `the stream this event went down and the object that fired it. A readout does not ` +
+        `write "an event", it writes one into a stream named for what fired the trigger — ` +
+        `and the two experiments do not agree about that, because a trigger is built out of ` +
+        `the detector behind it. ${detector.config.name} is built around ` +
+        `${detector.config.specialtyLabel}, so those clear the bar here at a momentum that ` +
+        `would be thrown away at the other point.`,
+    );
     this.rows.row(
       'objects',
       'objects',
@@ -122,14 +130,14 @@ export class EventPanel {
     );
     this.rows.row(
       'measured',
-      'measured',
+      'tracker',
       'tracker hits and how much of the event they came from: a charged particle leaves a ' +
         'hit on every layer it reaches, a neutral leaves none, and one curled up by the ' +
         'solenoid never leaves the tracker at all',
     );
     this.rows.row(
       'et',
-      'Σ pT · through',
+      'Σ pT',
       'transverse momentum summed over everything that came out, and how many things reached ' +
         'the muon chambers — eleven metres of lead and steel out from the vertex',
     );
@@ -144,13 +152,14 @@ export class EventPanel {
 
     // The layer legend, under the numbers rather than under the picture: it never changes,
     // so it belongs at the bottom of the column that is read, not the one that is watched.
+    //
+    // **One line, not three.** It is a caption on a picture that has not changed since the
+    // session started, and three lines of it cost a card three lines of height that the
+    // numbers above — which do change — had to give up. What the layers *are* is on the
+    // picture's own tooltip, which is where a reader who wants them will look.
     const note = document.createElement('div');
     note.className = 'event-note';
-    note.textContent =
-      `r–φ · ${DETECTOR_RADIUS_M} m radius\n` +
-      `pixel×4 · strip×4 · straw\n` +
-      `EM×${EM_SAMPLINGS} · tile×${HAD_SAMPLINGS} · muon×${MUON_STATIONS}`;
-    note.style.whiteSpace = 'pre-line';
+    note.textContent = `r–φ · ${DETECTOR_RADIUS_M} m · ${BARREL.length} layers`;
     side.append(note);
   }
 
@@ -197,9 +206,11 @@ export class EventPanel {
 
     const t = kept.transverse;
     const pt = kept.score;
+    // The stream, not the species name: "single-μ, 6.1 GeV" says both what it was and what
+    // the experiment did with it, in the same width the species alone used to take.
     this.rows.set(
       'kept',
-      `${speciesName(kept.event.hardestSpecies)}, ${pt < 10 ? pt.toFixed(1) : pt.toFixed(0)} GeV`,
+      `${kept.stream} · ${pt < 10 ? pt.toFixed(1) : pt.toFixed(0)} GeV`,
       pt > 10 ? 'warn' : pt > 3 ? 'hot' : undefined,
     );
     // Named, because "some circles" is not a readout. Three fit; the rest are on the picture.
@@ -213,16 +224,16 @@ export class EventPanel {
         : 'all soft',
       t.objects.length > 0 ? undefined : 'idle',
     );
-    this.rows.set(
-      'measured',
-      `${t.hitCount} hits · ${t.charged} of ${t.primaries} charged · ${t.loopers} curled up`,
-    );
+    // Shortened, all three of them: this column sets the height of the card, and a value
+    // that wraps to three lines costs the picture beside it two. The tooltips still say
+    // what each number is.
+    this.rows.set('measured', `${t.hitCount} hits · ${t.charged}/${t.primaries} charged`);
     this.rows.set(
       'et',
-      `${t.sumEt.toFixed(0)} GeV · ${t.muonTracks > 0 ? `${t.muonTracks} to the chambers` : 'nothing through'}`,
+      `${t.sumEt.toFixed(0)} GeV · ${t.muonTracks > 0 ? `μ×${t.muonTracks} through` : 'none through'}`,
       t.muonTracks > 0 ? 'hot' : undefined,
     );
-    const pileUp = kept.pileUp > 0.05 ? `, in ${kept.pileUp.toFixed(0)} at once` : '';
+    const pileUp = kept.pileUp > 0.05 ? ` · ${kept.pileUp.toFixed(0)} at once` : '';
     this.rows.set(
       'rate',
       det.selectivity > 1

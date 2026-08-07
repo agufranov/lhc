@@ -33,7 +33,7 @@ import {
   OVERHANG_ALLOWED,
   OVERLAY_PADDING,
 } from '../../src/ui/layout';
-import { collide, open } from './page';
+import { collide, controlStates, open } from './page';
 
 interface Box {
   id: string;
@@ -67,11 +67,65 @@ function overlap(a: Box, b: Box): number {
   return x > 0 && y > 0 ? Math.round(Math.min(x, y)) : 0;
 }
 
+type ControlState = Array<{ label: string; blocked: boolean }>;
+
+/**
+ * The button bar's greying, at both ends of a run.
+ *
+ * The rule is in `ui/controls.ts`: a control is greyed only when pressing it would do
+ * *nothing* — a ramp already programmed for the energy it asks for, cogging with one beam on
+ * the orbit — and never when it would do something instructive and bad. The kickers are the
+ * whole point of that second half and are asserted live in both states.
+ */
+function checkControls(idle: ControlState, running: ControlState): void {
+  const state = (bar: ControlState, fragment: string): boolean | null =>
+    bar.find((c) => c.label.includes(fragment))?.blocked ?? null;
+  const expect = (bar: ControlState, when: string, want: Record<string, boolean>): void => {
+    const wrong = Object.entries(want)
+      .map(([fragment]) => [fragment, state(bar, fragment)] as const)
+      .filter(([fragment, is]) => is !== want[fragment])
+      .map(([fragment, is]) => `${fragment} is ${is === null ? 'missing' : is ? 'greyed' : 'live'}`);
+    check(
+      `the controls that would do nothing are greyed out — ${when}`,
+      wrong.length === 0,
+      wrong.join(', ') || `${Object.keys(want).length} controls as expected`,
+    );
+  };
+
+  expect(idle, 'empty collider', {
+    'ramp → 6.8 TeV': false,
+    'ramp down': true, // already sitting at 450
+    '◀ cog': true, // no beams to move against each other
+    '◎ auto': true,
+    'cog ▶': true,
+    'SPS flat bottom': true, // where it already is
+    'SPS → 450 GeV': false,
+  });
+  expect(running, 'ramped and colliding', {
+    'ramp → 6.8 TeV': true, // already programmed for it
+    'ramp down': false,
+    '◀ cog': false,
+    '◎ auto': false,
+    'cog ▶': false,
+  });
+  // Never, in either state: arming a kicker into a machine that cannot capture the beam is
+  // the most instructive press in the toy, and firing one at nothing is an operator's right.
+  const kickers = { '→ LHC beam 1': false, '→ LHC beam 2': false, '⏻ beam 1': false, '⏻ beam 2': false };
+  expect(idle, 'the kickers, empty', kickers);
+  expect(running, 'the kickers, colliding', kickers);
+}
+
 for (const [width, height] of sizes) {
   console.log(`--- ${width}x${height} ---`);
   const session = await open(width, height);
   try {
+    // The button bar as it stands on an empty collider, before anything is pressed. What is
+    // greyed here is what would do nothing here — and the kickers are not in it, at either
+    // end of the run. See `ui/controls.ts`.
+    const idle = await controlStates(session.page);
     await collide(session.page, 2);
+    const running = await controlStates(session.page);
+    checkControls(idle, running);
 
     const measured = await session.page.evaluate(() => {
       // The rails as whole boxes, not their contents: a rail is one scrolling column, and
@@ -103,11 +157,19 @@ for (const [width, height] of sizes) {
         const el = document.getElementById(id);
         return el ? Math.max(0, el.scrollHeight - el.clientHeight) : 0;
       };
+      // Per panel, not per rail. A rail with more in it than the window is tall scrolls, and
+      // that is the stated retreat; a *panel* whose own content is scrolled away has been
+      // crushed by the flexbox, which is the bug that shipped. They are different failures
+      // and only the second one is one.
+      const crushed = ['panel-beam', 'panel-physics', 'panel-compute', 'panel-run', 'panel-power', 'panel-injector']
+        .map((id) => ({ id, by: hiddenIn(id) }))
+        .filter((p) => p.by > 1);
       // The numbers beside the picture: a card is as tall as the taller of the two, which is
       // what `EVENT_CARD_CHROME` and `EVENT_SIDE_HEIGHT` are measured from.
       const sideEl = document.querySelector('#panel-ip-a .event-body > div:last-child');
       return {
         boxes,
+        crushed,
         railHidden: hiddenIn('rail-right'),
         leftRailHidden: hiddenIn('rail-left'),
         pictureA: canvasEl?.getBoundingClientRect().width ?? 0,
@@ -161,27 +223,26 @@ for (const [width, height] of sizes) {
     }
     check('no panel is drawn over another panel', worstBy === 0, worst || 'nothing overlaps');
 
-    // The right-hand rail is the one the experiments compete with, and the one that was
-    // crushed. Wherever the cards stand *beside* it — the design, and what any window with
-    // room for it gets — it must hold both its readouts whole. Where the window is too narrow
-    // and the cards have retreated into the column, it scrolls, which is the stated retreat.
+    // **No panel is crushed.** Both rails hold more than a short window can show and both
+    // scroll, which is the stated retreat and the one thing a column of numbers may do — the
+    // right one has held the run panel since the spectra arrived, and the left one has never
+    // fitted a filled beam readout plus the physics plus compute. See `limits.md`.
     //
-    // The left-hand rail is never asserted: a filled beam readout, the physics and the
-    // compute panel want 1020 px of column and no window here is that tall, so it scrolls —
-    // strictly better than the overlap it used to be. See `limits.md`.
+    // What must not happen is the bug that shipped: the flexbox taking the space out of a
+    // *panel*, so POWER became a 115 px scroller with the injector pushed off the bottom of
+    // it. A rail that scrolls can be scrolled; a panel that has been shrunk cannot be found.
     const railBox = by('rail-right')!;
     const beside = a.right <= railBox.left && b.right <= railBox.left;
     if (!beside) {
       console.log('       (cards have retreated into the readout column — window too narrow)');
     }
-    if (beside) {
-      check(
-        'the machine readouts are whole, not scrolled away',
-        measured.railHidden === 0,
-        `right rail hides ${Math.round(measured.railHidden)} px, ` +
-          `left rail ${Math.round(measured.leftRailHidden)} px`,
-      );
-    }
+    check(
+      'no panel has been crushed — the rails scroll, their contents do not',
+      measured.crushed.length === 0,
+      measured.crushed.map((p) => `${p.id} hides ${Math.round(p.by)} px`).join(', ') ||
+        `rails scroll by ${Math.round(measured.railHidden)} px right, ` +
+          `${Math.round(measured.leftRailHidden)} px left`,
+    );
 
     check(
       'every panel is inside the window',
@@ -247,7 +308,73 @@ for (const [width, height] of sizes) {
       `right edges ${Math.round(a.right)} and ${Math.round(b.right)}, window ${width}`,
     );
 
+    // The run panel: two live canvases in the right-hand rail. A plot with no box is a plot
+    // nobody can see, and it is the one thing on the overlay that is not made of text.
+    const plots = await session.page.evaluate(() =>
+      Array.from(document.querySelectorAll('#panel-run .plot-view')).map((c) => {
+        const r = c.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height) };
+      }),
+    );
+    check(
+      'both spectra have a box to be drawn in',
+      plots.length === 2 && plots.every((p) => p.w > 100 && p.h > 40),
+      plots.map((p) => `${p.w}x${p.h}`).join(', ') || 'none',
+    );
+
+    // And the machine's own voice, which has to be there at a fixed height whatever it says —
+    // the camera is fitted against the title block that contains it.
+    const ticker = await session.page.evaluate(() => {
+      const el = document.getElementById('ticker');
+      return el ? { h: Math.round(el.getBoundingClientRect().height), text: el.textContent ?? '' } : null;
+    });
+    check(
+      'the ticker is on screen and saying something',
+      !!ticker && ticker.h > 8 && ticker.text.length > 0,
+      ticker ? `${ticker.h} px — "${ticker.text}"` : 'missing',
+    );
+
+    // **The catastrophe, in the real page.** Last, because it takes the beams away: forced
+    // through the same path the scheduler uses, and what is asserted is what the *page* does
+    // about it — the banner going red and the ground moving are DOM and canvas states that no
+    // headless assertion about the physics could see.
+    const boom = await session.page.evaluate(async () => {
+      const w = (window as unknown as { lhc: { world: { forceIncident(id: string): string | null; shake: number } } }).lhc.world;
+      const text = w.forceIncident('interconnect');
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const el = document.getElementById('ticker');
+      return {
+        text,
+        shake: w.shake,
+        className: el?.className ?? '',
+        banner: el?.textContent ?? '',
+        logged: document.querySelectorAll('#panel-run .log-line').length,
+      };
+    });
+    check(
+      'a catastrophe reaches the page: red banner, shaking ground, a line in the log',
+      boom.className.includes('sev-catastrophe') &&
+        boom.shake > 0.5 &&
+        boom.banner.includes('INTERCONNECT') &&
+        boom.logged > 0,
+      `shake ${boom.shake.toFixed(2)}, ${boom.logged} log lines, banner "${boom.banner.slice(0, 40)}…"`,
+    );
+
     if (session.errors.length > 0) check('the page threw nothing', false, session.errors.join('; '));
+  } finally {
+    await session.close();
+  }
+}
+
+// Everything above ran on a `?quiet=1` page, because a layout measurement cannot afford a UFO
+// in the middle of it. That leaves one thing to check: that a player gets the other machine.
+{
+  const session = await open(1280, 860, false);
+  try {
+    const live = await session.page.evaluate(
+      () => (window as unknown as { lhc: { world: { incidents: { enabled: boolean } } } }).lhc.world.incidents.enabled,
+    );
+    check('a page opened normally has its incidents switched on', live === true, `enabled = ${live}`);
   } finally {
     await session.close();
   }
