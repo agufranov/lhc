@@ -273,3 +273,18 @@ or the picture would resize every time something went wrong. Both are argued in 
   *inwards*: outwards it would reach the tunnel and a click on the beam pipe would switch
   a magnet off. That asymmetry is what keeps the injector's magnets clickable (18 px) at
   a quarter of the collider's size.
+- **`.row`, `.rows` and `.panel`'s own padding are shared with the event cards.**
+  `EventPanel` builds its side column out of the same `Readout` class the machine readouts
+  use, so tightening row spacing or panel padding to make BEAM/PHYSICS/POWER/INJECTOR
+  denser also resizes the side column `EVENT_SIDE_HEIGHT` (120 px) is measured against, and
+  `check:page` fails. Scope density changes to `.rail .panel` / `.rail .row` / `.rail .rows`
+  — the rail panels only, since `.panel--event` is not inside `.rail` — and the event cards
+  are untouched. Done this way for the readout-column compacting in this file's history;
+  `check:page` still measured 120 px and 45 px afterwards.
+- **The eight power circuits pack two to a row with no JS change.** `.sector`'s DOM
+  (`hud.ts`) is unchanged — name, track, wattage — and is still its own three-column grid;
+  what changed is `.sectors` going from a single flex column to a two-column CSS grid, so the
+  browser's normal grid auto-placement lays two `.sector` items per row on its own. Nothing
+  needed `display: contents` or touching the sector's own markup. Halved that list's height
+  for free; the same trick would work for INJECTOR's extraction lines if that panel is ever
+  the one that has to give up height.

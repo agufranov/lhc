@@ -231,11 +231,43 @@ body {
   width: var(--readout-column, 260px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   pointer-events: auto;
+}
+
+/* A rail with more in it than a short window can show still scrolls — wheel and keyboard
+   both still work — but the bar itself is not drawn until the pointer is actually over the
+   column. Most of the time that column is sitting beside the picture of the machine, not
+   being read, and a permanent grey stripe down it is worse than a control that appears when
+   it is wanted. `scrollbar-width: none` above hides Firefox's; Chromium has no such value
+   and needs its pseudo-elements collapsed to zero width instead. */
+.rail::-webkit-scrollbar {
+  width: 0;
+}
+
+.rail:hover {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 170, 220, 0.4) transparent;
+}
+
+.rail:hover::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rail::-webkit-scrollbar-thumb {
+  background: rgba(120, 170, 220, 0.4);
+  border-radius: 3px;
+}
+
+.rail::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 170, 220, 0.6);
 }
 
 .rail--left {
@@ -361,19 +393,25 @@ body {
   margin: 6px 0;
 }
 
+/* Two sectors per row rather than one: eight of these stacked single-file cost the POWER
+   panel as much height as every other row in it combined, and the wattage figure is the
+   only thing in the list that changes often enough to need reading at a glance — the bar
+   already says load and colour already says trouble. `.sector` keeps its own three-column
+   grid, so the browser lays two of them into each row of this one without any JS change. */
 .sectors {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 10px;
+  row-gap: 3px;
+  margin-top: 6px;
 }
 
 .sector {
   display: grid;
-  grid-template-columns: 34px 1fr 62px;
+  grid-template-columns: 26px 1fr 34px;
   align-items: center;
-  gap: 8px;
-  font-size: 10.5px;
+  gap: 5px;
+  font-size: 9.5px;
   opacity: 0.75;
   transition: opacity 0.2s;
 }
@@ -414,6 +452,53 @@ body {
 .sector.off .name,
 .sector.off .pw {
   color: #ff8c3c;
+}
+
+/* The rail panels only — BEAM alone is eighteen rows, and stacked at the base spacing they
+   read as one grey wall of numbers. Scoped to `.rail` rather than tightened on `.panel`
+   itself: the event cards' side column uses the same `.row`/`.rows` classes and its height
+   (`EVENT_SIDE_HEIGHT`) is a measured constant `check:page` asserts against the real DOM, so
+   it must not move with this. */
+.rail .panel {
+  padding: 8px 10px 8px;
+  font-size: 11px;
+}
+
+.rail .panel h2 {
+  margin: 0 0 6px;
+}
+
+.rail .rows {
+  gap: 1px;
+}
+
+.rail .row {
+  line-height: 1.3;
+}
+
+.rail .sep {
+  margin: 5px 0;
+}
+
+.rail .plot {
+  margin: 3px 0 1px;
+}
+
+.rail .plot-view {
+  height: 62px;
+}
+
+.rail .plot-caption {
+  padding: 2px 0 1px;
+}
+
+.rail .report {
+  margin: 5px 0 1px;
+  padding: 5px 6px;
+}
+
+.rail .log {
+  margin-top: 6px;
 }
 
 .controls {

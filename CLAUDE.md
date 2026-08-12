@@ -115,7 +115,7 @@ npm run shot -- 1919 906 out.png   # a screenshot of the running toy, headless
   `npm start` then fails with `Port 5173 is already in use`. Vite resolves modules from
   disk on every request, so an older server still serves current code — check with
   `Invoke-WebRequest` for a known new symbol rather than restarting blindly.
-- A git repository, on `main`. **Pushing `main` publishes the toy**: `.github/workflows/pages.yml`
+- A git repository, on `main`. Make commit on each significant step. **Pushing `main` publishes the toy**: `.github/workflows/pages.yml`
   runs typecheck, `check`, `check:render`, `vite build`, and deploys `dist/` to GitHub Pages.
   A red check there means nothing ships, which is the point — do not push work that fails
   the three gates locally.

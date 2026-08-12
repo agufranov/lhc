@@ -152,12 +152,20 @@ tracked in it.
   readouts scroll, which is the old behaviour and the reason the layout was rewritten. What is
   guaranteed at every size is that nothing is drawn on top of anything — `check:page` asserts
   that at 1280×860 too.
-- **Both rails scroll on a short window.** A filled beam readout, the physics panel and the
-  compute panel want about 1020 px of column, and a 906 px window has 768; the right rail gained
-  the run panel and is now about 490 px over as well. They scroll rather than overlapping, which
-  is what they used to do instead. `check:page` prints how much is hidden and does not fail on
-  it — what it *does* fail on is a **panel** whose own content is scrolled away, which is the
-  flexbox crushing it and is the bug that shipped.
+- **Both rails scroll on a short window, and the right one scrolls on most windows.** The left
+  rail (beam, physics, compute) fits an 1919×906 window with 21 px to spare; the right one
+  (run, power, injector) is still about 108 px over at that size and does not stop scrolling
+  until roughly 2560×1440, because the run panel's two spectra plus the eight-circuit power
+  list plus the injector's own rows add up to more column than a normal window is tall,
+  compacting notwithstanding (`.rail .panel`, `.rail .row` etc. in `style.css`, and the
+  eight-circuit list packed two to a row). They scroll rather than overlapping, which is what
+  they used to do instead. `check:page` prints how much is hidden and does not fail on it —
+  what it *does* fail on is a **panel** whose own content is scrolled away, which is the flexbox
+  crushing it and is the bug that shipped. Because it scrolls on most sessions and not just
+  narrow ones, the rail's scrollbar is hidden until the pointer is over the column
+  (`scrollbar-width: none` / zero-width `::-webkit-scrollbar` by default, both restored on
+  `:hover`) — a bar that is visible more often than not read as a permanent stripe down the
+  readouts rather than a control.
 - **A card may reach up to 40 px over an arc** (`OVERHANG_ALLOWED`) when its band is too narrow
   for a readable picture, and it may cover a transfer line freely — rings are treated as hard
   obstacles and lines as soft. Argued in `rendering.md`; the alternative was hiding readouts.
