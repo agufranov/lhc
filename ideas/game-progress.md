@@ -85,6 +85,21 @@
 - [x] Первый срез проверен вручную в desktop- и mobile-viewport.
 - [x] Разобран `claude-chat-idea.md` и сформирован черновик кампании в
   `ideas/scenarios.md`: столкновения становятся началом производственной смены, а не её концом.
+- [x] Реализован второй вертикальный срез — трёхминутная Production Shift с целью по данным,
+  обязательным operator dump, физическим turnaround/refill и итоговым отчётом.
+
+## Второй вертикальный срез: Production Shift
+
+- Смена продолжается из первого столкновения без reset и считает только данные, набранные
+  после своего старта.
+- Цель: `0.030 fb⁻¹` за три минуты wall time, хотя бы один `operator dump` и stable beams в
+  более позднем fill.
+- После dump игрок возвращает пустой LHC к 450 GeV и повторяет настоящую цепочку SPS → TI 2 /
+  TI 8 → LHC ramp → cogging. Сценарного создания пучков нет.
+- На desktop во время производства раскрывается RUN со спектрами; на mobile остаются цель,
+  таймер, progress данных и крупное решение о dump.
+- По окончании score замораживается, оставшиеся beams штатно уходят в оба dump, затем появляется
+  отчёт по данным, availability, измеренному turnaround, dump, quench и damage.
 
 ## Проверки первого среза
 
@@ -114,4 +129,10 @@
   `y=216`, а пульт начинается на `y=778`.
 - Первый автоматический проход достиг ненулевой светимости через состояния
   `beam-1-ramp → beam-1-extract → beam-2-fill → beam-2-ramp → beam-2-extract →
-  lhc-ramp → cog → complete`.
+  lhc-ramp → cog → commissioning-complete`.
+- Сквозной Production Shift browser-test продолжает тот же `World`, набирает данные, выполняет
+  operator dump, возвращает LHC к injection energy, заново проводит оба batch через SPS и
+  transfer lines, делает ramp и cogging и получает `production-passed` только после новой
+  ненулевой светимости.
+- Для второго среза повторно пройдены `typecheck`, полный `check`, `check:render`, production
+  build и полный `check:page` на четырёх desktop-размерах и portrait 390×844.

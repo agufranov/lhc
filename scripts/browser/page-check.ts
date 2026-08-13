@@ -406,7 +406,7 @@ for (const [width, height] of sizes) {
     await press(session.page, 'ramp → 6.8 TeV');
     check('cogging is offered only at flat top', await reaches('cog'));
     await press(session.page, 'auto');
-    check('commissioning completes only on detector luminosity', await reaches('complete', 60));
+    check('commissioning completes only on detector luminosity', await reaches('commissioning-complete', 60));
 
     const completed = await session.page.evaluate(() => {
       const guide = document.getElementById('panel-guide');
@@ -417,15 +417,140 @@ for (const [width, height] of sizes) {
         activeActions: document.querySelectorAll('#controls .control--guide-action').length,
         visibleMachineActions: Array.from(document.querySelectorAll<HTMLElement>('#controls [data-action]'))
           .filter((el) => getComputedStyle(el).display !== 'none').length,
+        primary: (document.getElementById('guide-primary')?.textContent ?? '').trim(),
       };
     });
     check(
-      'the completed shift has data, no phantom next command and a sandbox exit',
+      'commissioning hands live beams to a production shift instead of ending in sandbox',
       completed.luminosity > 0 &&
         completed.activeActions === 0 &&
         completed.visibleMachineActions === 0 &&
-        completed.text.includes('continue in sandbox'),
-      `L ${completed.luminosity.toExponential(2)}, ${completed.activeActions} active actions`,
+        completed.primary === 'start production shift',
+      `L ${completed.luminosity.toExponential(2)}, primary "${completed.primary}"`,
+    );
+
+    await session.page.click('#guide-primary');
+    check('the production clock starts without resetting the colliding fill', await reaches('production-stable'));
+    const producing = await session.page.evaluate(async () => {
+      const lhc = (window as unknown as {
+        lhc: {
+          world: { analysis: { integrated: number } };
+          guide: { productionShift: { exposureAtStart: number; remainingWallSeconds: number } | null };
+        };
+      }).lhc;
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      const run = document.getElementById('panel-run');
+      return {
+        gain: lhc.world.analysis.integrated - (lhc.guide.productionShift?.exposureAtStart ?? 0),
+        remaining: lhc.guide.productionShift?.remainingWallSeconds ?? 0,
+        runVisible: !!run && getComputedStyle(run).display !== 'none',
+        mode: document.body.classList.contains('mode-production'),
+      };
+    });
+    check(
+      'stable beams make scored data while the scientific result is visible',
+      producing.gain > 0 && producing.remaining > 170 && producing.runVisible && producing.mode,
+      `gain ${producing.gain.toExponential(2)}, ${producing.remaining.toFixed(0)} s left, run visible ${producing.runVisible}`,
+    );
+
+    await session.page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+    const productionPhone = await session.page.evaluate(() => {
+      const guide = document.getElementById('panel-guide')!.getBoundingClientRect();
+      const primary = document.getElementById('guide-primary')!.getBoundingClientRect();
+      return {
+        scrollWidth: document.documentElement.scrollWidth,
+        guide: { left: guide.left, right: guide.right, bottom: guide.bottom },
+        primary: { left: primary.left, right: primary.right, bottom: primary.bottom },
+        viewport: { width: innerWidth, height: innerHeight },
+      };
+    });
+    check(
+      'the live production decision remains touchable on a portrait phone',
+      productionPhone.scrollWidth <= productionPhone.viewport.width &&
+        productionPhone.guide.left >= 0 &&
+        productionPhone.guide.right <= productionPhone.viewport.width &&
+        productionPhone.primary.left >= productionPhone.guide.left &&
+        productionPhone.primary.right <= productionPhone.guide.right &&
+        productionPhone.primary.bottom <= productionPhone.viewport.height,
+      `guide ${Math.round(productionPhone.guide.left)}..${Math.round(productionPhone.guide.right)}, ` +
+        `decision ${Math.round(productionPhone.primary.left)}..${Math.round(productionPhone.primary.right)}`,
+    );
+    await session.page.setViewport({ width: 1280, height: 860, deviceScaleFactor: 1 });
+
+    await session.page.click('#guide-primary');
+    check('an operator dump closes the first scored fill through the dump system', await reaches('refill-lhc-down'));
+    await press(session.page, 'ramp down');
+    check('turnaround waits for the empty LHC to reach injection energy', await reaches('refill-beam-1-fill'));
+    await press(session.page, 'fill SPS');
+    check('the replacement batch is delivered by the injector chain', await reaches('refill-beam-1-ramp'));
+    await press(session.page, 'SPS → 450 GeV');
+    check('the replacement beam 1 still needs a real SPS ramp', await reaches('refill-beam-1-extract'));
+    await press(session.page, 'LHC beam 1');
+    check('the replacement beam 1 arrives before beam 2 is prepared', await reaches('refill-beam-2-fill'));
+    await press(session.page, 'fill SPS');
+    check('the second replacement batch reaches the SPS', await reaches('refill-beam-2-ramp'));
+    await press(session.page, 'SPS → 450 GeV');
+    check('the replacement beam 2 is offered only at 450 GeV', await reaches('refill-beam-2-extract'));
+    await press(session.page, 'LHC beam 2');
+    check('the replacement pair arrives before the collider ramp', await reaches('refill-lhc-ramp'));
+    await press(session.page, 'ramp → 6.8 TeV');
+    check('the replacement pair reaches flat top before cogging', await reaches('refill-cog'));
+    await press(session.page, 'auto');
+    check('the replacement fill must actually return to luminosity', await reaches('production-stable', 60));
+
+    const refill = await session.page.evaluate(() => {
+      const shift = (window as unknown as {
+        lhc: { guide: { productionShift: { score: { operatorDumps: number; refilled: boolean } } } };
+      }).lhc.guide.productionShift;
+      return shift.score;
+    });
+    check(
+      'the scenario recognises a completed dump and a later physical refill',
+      refill.operatorDumps === 1 && refill.refilled,
+      `${refill.operatorDumps} dumps, refilled ${refill.refilled}`,
+    );
+
+    await session.page.evaluate(() => {
+      const lhc = (window as unknown as {
+        lhc: {
+          world: { machineClock: number; analysis: { integrated: number } };
+          guide: { productionShift: { exposureAtStart: number; target: number; endsAt: number } };
+        };
+      }).lhc;
+      const shift = lhc.guide.productionShift;
+      // The refill above produced real data. Move only the long score clock and exposure to
+      // their deterministic boundary so this browser gate need not idle for three minutes.
+      lhc.world.analysis.integrated = shift.exposureAtStart + shift.target;
+      lhc.world.machineClock = shift.endsAt;
+    });
+    check('the shift ends with a physical handover dump', await reaches('production-passed', 30));
+    const report = await session.page.evaluate(() => {
+      const shift = (window as unknown as {
+        lhc: {
+          guide: {
+            productionShift: {
+              score: { passed: boolean; operatorDumps: number; refilled: boolean; turnaroundSeconds: number };
+            };
+          };
+        };
+      }).lhc.guide.productionShift;
+      return {
+        score: shift.score,
+        text: document.getElementById('panel-guide')?.textContent ?? '',
+      };
+    });
+    check(
+      'the debrief requires data, a deliberate dump and stable beams after turnaround',
+      report.score.passed &&
+        report.score.operatorDumps === 1 &&
+        report.score.refilled &&
+        report.text.includes('Shift passed') &&
+        report.score.turnaroundSeconds > 0 &&
+        report.text.includes('restart campaign') &&
+        report.text.includes('turnaround') &&
+        report.text.includes('damage'),
+      `${report.score.operatorDumps} dumps, ${report.score.turnaroundSeconds.toFixed(0)} s turnaround, ` +
+        `refilled ${report.score.refilled}, passed ${report.score.passed}`,
     );
     if (session.errors.length > 0) check('the guided page threw nothing', false, session.errors.join('; '));
   } finally {

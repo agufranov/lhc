@@ -206,6 +206,10 @@ and POWER rather than adding another full console beside them; BEAM and INJECTOR
 two detailed readouts relevant to commissioning. Switching to sandbox reveals the same DOM,
 not a duplicate overlay.
 
+During the scored production shift RUN returns in the right rail: the spectra are the objective
+and must be visible once collisions have become work rather than instruction. POWER remains
+withheld until a later scenario introduces machine protection.
+
 Below 1100 CSS px it becomes a top sheet and every other rail panel disappears. Its height is
 read from the DOM by `GameGuide.mobileHeight` and added to the camera's top chrome, so changing
 the guide copy cannot silently put it over the machine. The focused control bar has pause and

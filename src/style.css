@@ -145,16 +145,53 @@ body {
   color: #9ee6b4;
 }
 
-.guide-sandbox {
-  width: 100%;
+.guide-meter {
+  height: 4px;
   margin-top: 10px;
+  overflow: hidden;
+  background: rgba(6, 12, 20, 0.72);
+  border-radius: 999px;
+}
+
+.guide-meter-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #3c94dc, #9fe8ff);
+  box-shadow: 0 0 12px rgba(96, 190, 246, 0.45);
+  transition: width 180ms linear;
+}
+
+.guide-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.guide-primary,
+.guide-sandbox {
   padding: 7px 9px;
-  color: #8faac6;
   font: 10px var(--mono);
-  background: rgba(7, 12, 21, 0.5);
-  border: 1px solid rgba(110, 160, 210, 0.24);
   border-radius: 6px;
   cursor: pointer;
+}
+
+.guide-primary {
+  flex: 1 1 auto;
+  color: #eef8ff;
+  background: rgba(55, 125, 190, 0.62);
+  border: 1px solid rgba(135, 205, 255, 0.62);
+}
+
+.guide-primary:hover {
+  background: rgba(70, 145, 210, 0.72);
+  border-color: rgba(165, 220, 255, 0.85);
+}
+
+.guide-sandbox {
+  flex: 0 0 auto;
+  color: #8faac6;
+  background: rgba(7, 12, 21, 0.5);
+  border: 1px solid rgba(110, 160, 210, 0.24);
 }
 
 .guide-sandbox:hover {
@@ -166,8 +203,11 @@ body {
    DOM and the same machine with these panels and commands revealed again. */
 .mode-guided #panel-physics,
 .mode-guided #panel-compute,
-.mode-guided #panel-run,
 .mode-guided #panel-power {
+  display: none;
+}
+
+.mode-guided:not(.mode-production) #panel-run {
   display: none;
 }
 

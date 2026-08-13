@@ -71,7 +71,9 @@ press has opinions about all of it. See `docs/running.md`.
 The normal page now opens as a **guided commissioning shift**: one live objective and one
 existing operator command at a time take a new player through SPS ramp → beam 1 → beam 2 →
 LHC ramp → cogging → first luminosity. It advances only when `World` reaches the state, never
-when a button is merely pressed. `?sandbox=1` reveals the complete original console, and the
+when a button is merely pressed. First luminosity now hands the live machine to a scored
+**production shift**: collect 0.030 fb⁻¹ in three minutes, deliberately dump a fill, and return
+its replacement to stable beams. `?sandbox=1` reveals the complete original console, and the
 guide can switch to it without resetting the machine. See `docs/gameplay.md`.
 What is not built: `docs/limits.md`.
 
@@ -193,6 +195,7 @@ src/ui/          hud.ts, controls.ts, eventPanel.ts, readout.ts, format.ts
   layout.ts      where every overlay box goes, worked out against the camera
 src/game/
   guide.ts       the first commissioning shift, derived entirely from live World state
+  productionShift.ts  deadline, score and pass conditions over real fills and accumulated data
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
   browser/       page.ts, shot.ts, page-check.ts — headless Chrome (node types live here
                  only; see tsconfig.browser.json)
