@@ -15,6 +15,21 @@ export interface ControlHandlers {
   onAutoCog(): void;
 }
 
+/** Stable names used by the guided game layer; labels are presentation and may change. */
+export type ControlAction =
+  | 'fill-sps'
+  | 'sps-ramp-up'
+  | 'sps-ramp-down'
+  | 'extract-beam-1'
+  | 'extract-beam-2'
+  | 'cog-left'
+  | 'cog-auto'
+  | 'cog-right'
+  | 'dump-beam-1'
+  | 'dump-beam-2'
+  | 'lhc-ramp-up'
+  | 'lhc-ramp-down';
+
 /**
  * What a control may be greyed out for, and what it may never be greyed out for.
  *
@@ -44,13 +59,16 @@ export interface ControlHandlers {
 export class Controls {
   private pauseBtn: HTMLButtonElement;
   private blocks: Block[] = [];
+  private root: HTMLElement;
 
   constructor(root: HTMLElement, world: World, handlers: ControlHandlers) {
+    this.root = root;
     root.innerHTML = '';
     const collider = world.collider.ring.config;
     const injector = world.injector.ring.config;
 
     this.pauseBtn = button(root, '⏸ pause', handlers.onTogglePause);
+    this.pauseBtn.dataset.guideAlways = 'true';
 
     // The injector is a machine now, not a source: the chain delivers at 26 GeV and the
     // ramp to 450 is something somebody does. So filling and ramping are one cluster, in
@@ -62,6 +80,7 @@ export class Controls {
           `flat bottom, and ${(21.6).toFixed(1)} s later the PS delivers a batch into it. ` +
           'Batches stack at flat bottom, which is what a real fill does.',
         handlers.onFillInjector,
+        'fill-sps',
       ],
       [
         `▲ ${injector.name} → ${injector.topEnergyGeV} GeV`,
@@ -70,11 +89,13 @@ export class Controls {
           'for 450 — which is the same lesson as injecting into a ramped collider, one ' +
           'machine earlier.',
         () => handlers.onInjectorRamp(true),
+        'sps-ramp-up',
       ],
       [
         `▼ ${injector.name} flat bottom`,
         'Back down to the energy the chain delivers at. Nothing can be filled until it is here.',
         () => handlers.onInjectorRamp(false),
+        'sps-ramp-down',
       ],
     ]);
     this.block(injectorGroup[0], (w) =>
@@ -97,12 +118,14 @@ export class Controls {
         'Fires the TI 2 extraction kickers. The batch leaves the injector on its next ' +
           'pass and flies down the transfer line, clockwise into the collider.',
         () => handlers.onExtract('ti2'),
+        'extract-beam-1',
       ],
       [
         `→ ${collider.name} beam 2`,
         'Same, down TI 8 — which has to bend, and arrives pointing the other way round ' +
           'the ring. That is the whole of what makes it the counter-rotating beam.',
         () => handlers.onExtract('ti8'),
+        'extract-beam-2',
       ],
     ]);
 
@@ -125,6 +148,7 @@ export class Controls {
       (down) => handlers.onCog(down ? -1 : 0),
       'Trims beam 2 revolution frequency. The beams slip against each other and the point ' +
         'where they meet walks round the ring — hold it and watch the interaction region move.',
+      'cog-left',
     );
     const cogAuto = button(
       cog,
@@ -132,8 +156,15 @@ export class Controls {
       () => handlers.onAutoCog(),
       'Walks the crossing point onto the first interaction point and stops. The two ' +
         'insertions are half a ring apart, so aligning one aligns the other.',
+      'cog-auto',
     );
-    const cogRight = hold(cog, 'cog ▶', (down) => handlers.onCog(down ? 1 : 0), 'The same, the other way.');
+    const cogRight = hold(
+      cog,
+      'cog ▶',
+      (down) => handlers.onCog(down ? 1 : 0),
+      'The same, the other way.',
+      'cog-right',
+    );
     root.append(cog);
 
     // A trim with one beam on the orbit moves nothing anybody can see, and the crossing
@@ -151,8 +182,8 @@ export class Controls {
     this.block(cogAuto, needsTwoBeams);
 
     group(root, 'dump', [
-      ['⏻ beam 1', 'Fires the beam 1 dump kickers at Point 5.', () => handlers.onExtract('td1')],
-      ['⏻ beam 2', 'Fires the beam 2 dump kickers, the other way out of the same straight.', () => handlers.onExtract('td2')],
+      ['⏻ beam 1', 'Fires the beam 1 dump kickers at Point 5.', () => handlers.onExtract('td1'), 'dump-beam-1'],
+      ['⏻ beam 2', 'Fires the beam 2 dump kickers, the other way out of the same straight.', () => handlers.onExtract('td2'), 'dump-beam-2'],
     ]);
 
     const rampUp = button(
@@ -162,6 +193,7 @@ export class Controls {
       `Puts the ${collider.name} on its ramp to ${(collider.topEnergyGeV / 1000).toFixed(1)} TeV. ` +
         'Whatever it is holding goes up with it — the RF keeps the beam on the orbit while ' +
         'the field climbs — and whatever arrives afterwards at 450 GeV does not.',
+      'lhc-ramp-up',
     );
     const rampDown = button(
       root,
@@ -170,6 +202,7 @@ export class Controls {
       `Back to the ${collider.injectionEnergyGeV} GeV the transfer lines are set for. ` +
         'The energy leaves the coils through the extraction resistors, which is why it takes ' +
         'as long coming down as it did going up.',
+      'lhc-ramp-down',
     );
     this.block(rampUp, (w) =>
       programmedFor(w.collider.targetEnergy, collider.topEnergyGeV)
@@ -187,6 +220,7 @@ export class Controls {
     // numbers mean, and this is a machine to be operated, not tuned.
     const wrap = document.createElement('label');
     wrap.className = 'control control--select';
+    wrap.dataset.guideHide = 'true';
     const caption = document.createElement('span');
     caption.className = 'caption';
     caption.textContent = 'compute';
@@ -235,6 +269,43 @@ export class Controls {
     }
   }
 
+  /**
+   * Shows only the one machine action the guided shift is teaching right now.
+   *
+   * This changes presentation only. The controls retain their original handlers and the
+   * world retains every operator action; switching back to sandbox reveals the same panel
+   * rather than constructing a second, safer machine beside it.
+   */
+  guide(action: ControlAction | null): void {
+    this.root.classList.add('controls--guided');
+    for (const el of Array.from(this.root.querySelectorAll<HTMLElement>('[data-action]'))) {
+      const chosen = el.dataset.action === action;
+      const always = el.dataset.guideAlways === 'true';
+      el.classList.toggle('control--guide-hidden', !chosen && !always);
+      el.classList.toggle('control--guide-action', chosen);
+    }
+    for (const el of Array.from(this.root.querySelectorAll<HTMLElement>('[data-guide-hide]'))) {
+      el.classList.add('control--guide-hidden');
+    }
+    for (const group of Array.from(this.root.querySelectorAll<HTMLElement>('.control--group'))) {
+      const visible = Array.from(group.querySelectorAll<HTMLElement>('[data-action]')).some(
+        (el) => !el.classList.contains('control--guide-hidden'),
+      );
+      group.classList.toggle('control--guide-hidden', !visible);
+    }
+  }
+
+  /** Restores the complete operator panel without changing the machine. */
+  sandbox(): void {
+    this.root.classList.remove('controls--guided');
+    for (const el of Array.from(this.root.querySelectorAll<HTMLElement>('.control--guide-hidden'))) {
+      el.classList.remove('control--guide-hidden');
+    }
+    for (const el of Array.from(this.root.querySelectorAll<HTMLElement>('.control--guide-action'))) {
+      el.classList.remove('control--guide-action');
+    }
+  }
+
   private block(el: HTMLButtonElement, why: (world: World) => string | null): void {
     this.blocks.push({ el, why, title: el.title, shown: undefined });
   }
@@ -266,11 +337,13 @@ function button(
   label: string,
   onClick: () => void,
   title?: string,
+  action?: ControlAction,
 ): HTMLButtonElement {
   const el = document.createElement('button');
   el.className = 'control control--button';
   el.textContent = label;
   if (title) el.title = title;
+  if (action) el.dataset.action = action;
   el.addEventListener('click', () => {
     if (!blocked(el)) onClick();
   });
@@ -284,11 +357,13 @@ function hold(
   label: string,
   onHold: (down: boolean) => void,
   title?: string,
+  action?: ControlAction,
 ): HTMLButtonElement {
   const el = document.createElement('button');
   el.className = 'control control--button';
   el.textContent = label;
   if (title) el.title = title;
+  if (action) el.dataset.action = action;
   el.addEventListener('mousedown', () => {
     if (!blocked(el)) onHold(true);
   });
@@ -304,7 +379,7 @@ function hold(
 function group(
   root: HTMLElement,
   caption: string,
-  items: Array<[string, string, () => void]>,
+  items: Array<[string, string, () => void, ControlAction?]>,
 ): HTMLButtonElement[] {
   const wrap = document.createElement('div');
   wrap.className = 'control control--group';
@@ -312,7 +387,9 @@ function group(
   cap.className = 'caption';
   cap.textContent = caption;
   wrap.append(cap);
-  const buttons = items.map(([label, title, onClick]) => button(wrap, label, onClick, title));
+  const buttons = items.map(([label, title, onClick, action]) =>
+    button(wrap, label, onClick, title, action),
+  );
   root.append(wrap);
   return buttons;
 }

@@ -199,6 +199,19 @@ Two traps found writing those:
   records as a one-point arc. A filter that picked track batches by colour alone counted it and
   reported half a segment.
 
+## The guided layer and the phone
+
+The guide is the first panel in the left rail on desktop. It replaces PHYSICS, COMPUTE, RUN
+and POWER rather than adding another full console beside them; BEAM and INJECTOR remain as the
+two detailed readouts relevant to commissioning. Switching to sandbox reveals the same DOM,
+not a duplicate overlay.
+
+Below 1100 CSS px it becomes a top sheet and every other rail panel disappears. Its height is
+read from the DOM by `GameGuide.mobileHeight` and added to the camera's top chrome, so changing
+the guide copy cannot silently put it over the machine. The focused control bar has pause and
+at most one machine action. At 390×844 `check:page` asserts no horizontal overflow, both boxes
+inside the viewport, the machine below the guide, and exactly `sps-ramp-up` exposed at entry.
+
 ## What a control may be greyed out for
 
 One rule, in `ui/controls.ts`: **a control is greyed only when pressing it would do nothing at

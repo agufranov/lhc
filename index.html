@@ -24,6 +24,20 @@
            A column rather than three placed panels, because on a short window they would
            otherwise be laid on top of one another — see `check:page`. -->
       <aside class="rail rail--left" id="rail-left">
+        <!-- The guided shift is the game's progressive front door. It reads the same live
+             World as the scientific panels and focuses one existing operator command; it
+             never advances the machine itself. On a phone this becomes the only visible
+             rail panel and the camera makes room beneath it. -->
+        <section class="panel panel--guide" id="panel-guide">
+          <div class="guide-meta">
+            <span id="guide-chapter"></span>
+            <span id="guide-progress"></span>
+          </div>
+          <h2 id="guide-title"></h2>
+          <p class="guide-goal" id="guide-goal"></p>
+          <div class="guide-status" id="guide-status"></div>
+          <button class="guide-sandbox" id="guide-sandbox" type="button">open sandbox</button>
+        </section>
         <section class="panel panel--beam" id="panel-beam"></section>
         <section class="panel panel--physics" id="panel-physics"></section>
         <section class="panel panel--compute" id="panel-compute"></section>

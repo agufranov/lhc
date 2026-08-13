@@ -87,9 +87,92 @@ body {
 .panel--beam,
 .panel--physics,
 .panel--run,
-.panel--compute {
+.panel--compute,
+.panel--guide {
   width: var(--readout-column, 260px);
   flex: 0 0 auto;
+}
+
+/* The game layer: one live objective, derived from the actual machine state. It belongs in
+   the readout rail on desktop and becomes a measured top sheet on a phone. */
+.panel--guide {
+  background:
+    linear-gradient(145deg, rgba(25, 54, 88, 0.88), rgba(9, 17, 30, 0.9));
+  border-color: rgba(104, 176, 238, 0.42);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.24);
+}
+
+.guide-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #76a8d8;
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+}
+
+.panel--guide h2 {
+  margin-bottom: 7px;
+  color: #eef7ff;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.guide-goal {
+  min-height: 3.7em;
+  margin: 0;
+  color: #d9e9f8;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.guide-status {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(114, 174, 226, 0.2);
+  color: var(--hot);
+  font-size: 9.5px;
+  letter-spacing: 0.07em;
+  line-height: 1.35;
+}
+
+.guide-status--waiting::before {
+  content: '◌ ';
+}
+
+.guide-status--complete {
+  color: #9ee6b4;
+}
+
+.guide-sandbox {
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 9px;
+  color: #8faac6;
+  font: 10px var(--mono);
+  background: rgba(7, 12, 21, 0.5);
+  border: 1px solid rgba(110, 160, 210, 0.24);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.guide-sandbox:hover {
+  color: var(--text);
+  border-color: rgba(130, 190, 240, 0.5);
+}
+
+/* Guided commissioning removes the wall of data without destroying it: sandbox is the same
+   DOM and the same machine with these panels and commands revealed again. */
+.mode-guided #panel-physics,
+.mode-guided #panel-compute,
+.mode-guided #panel-run,
+.mode-guided #panel-power {
+  display: none;
+}
+
+.mode-guided .ticker {
+  display: none;
 }
 
 /* The machine's own voice, under the title. Fixed height whatever it says: the camera is
@@ -547,6 +630,26 @@ body {
   cursor: not-allowed;
 }
 
+.control--guide-hidden {
+  display: none !important;
+}
+
+.control--guide-action {
+  color: #eef8ff;
+  background: rgba(55, 125, 190, 0.62);
+  border-color: rgba(135, 205, 255, 0.7);
+  box-shadow: 0 0 18px rgba(70, 160, 230, 0.2);
+}
+
+.control--guide-action:hover {
+  background: rgba(70, 145, 210, 0.72);
+  border-color: rgba(165, 220, 255, 0.85);
+}
+
+.controls--guided {
+  min-height: 50px;
+}
+
 .control--slider,
 .control--select {
   display: flex;
@@ -594,9 +697,84 @@ select {
   .overlay {
     grid-template-columns: 1fr;
   }
+
+  .title {
+    gap: 8px;
+  }
+
+  .title .sub {
+    display: none;
+  }
+
   .rail,
   .panel--compute,
   .panel--physics {
     display: none;
+  }
+
+  /* In guided mode the left rail becomes a top sheet. `main.ts` measures its real height and
+     gives the camera that space, so this panel does not sit over the machine. */
+  .mode-guided #rail-left {
+    display: block;
+    top: var(--rail-top, 56px);
+    right: var(--overlay-padding, 16px);
+    bottom: auto;
+    left: var(--overlay-padding, 16px);
+    width: auto;
+    overflow: visible;
+  }
+
+  .mode-guided #rail-left > .panel:not(.panel--guide) {
+    display: none;
+  }
+
+  .mode-guided .panel--guide {
+    width: 100%;
+    padding: 10px 12px;
+  }
+
+  .mode-guided .guide-goal {
+    min-height: 0;
+  }
+
+  .mode-guided .panel--event {
+    display: none !important;
+  }
+
+  .mode-guided .controls {
+    width: calc(100vw - 2 * var(--overlay-padding, 16px));
+    max-width: calc(100vw - 2 * var(--overlay-padding, 16px));
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .mode-guided .control--group {
+    min-width: 0;
+    padding: 0 0 0 6px;
+    border-right: 0;
+  }
+
+  .mode-guided .control--button {
+    min-height: 38px;
+    padding: 7px 10px;
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 480px) {
+  .overlay {
+    --overlay-padding: 10px;
+    --overlay-gap: 8px;
+  }
+
+  .mode-guided .control--group .caption {
+    display: none;
+  }
+
+  .mode-guided .controls {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
   }
 }

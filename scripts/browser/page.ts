@@ -78,7 +78,12 @@ export interface PageSession {
  * real rates about a quarter of these runs would get one. Pass `false` to drive the machine
  * the way a player gets it.
  */
-export async function open(width: number, height: number, quiet = true): Promise<PageSession> {
+export async function open(
+  width: number,
+  height: number,
+  quiet = true,
+  guided = false,
+): Promise<PageSession> {
   const server = await ensureServer();
   const browser = await puppeteer.launch({
     executablePath: findChrome(),
@@ -95,8 +100,12 @@ export async function open(width: number, height: number, quiet = true): Promise
   page.on('console', (m) => {
     if (m.type() === 'error' && !noise(m.text())) errors.push(m.text());
   });
-  const url = quiet ? `${server.url}${server.url.includes('?') ? '&' : '?'}quiet=1` : server.url;
-  await page.goto(url, { waitUntil: 'networkidle0', timeout: 30_000 });
+  const url = new URL(server.url);
+  if (quiet) url.searchParams.set('quiet', '1');
+  // The established browser gates measure the complete scientific UI and keep doing so in
+  // sandbox. A test that explicitly asks for `guided` gets the progressive front door.
+  if (!guided) url.searchParams.set('sandbox', '1');
+  await page.goto(url.toString(), { waitUntil: 'networkidle0', timeout: 30_000 });
   return {
     browser,
     page,

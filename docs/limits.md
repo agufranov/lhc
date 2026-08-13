@@ -15,6 +15,11 @@ programme is modelled, its power draw is not and should not be quoted at anyone.
 and the PS as machines: the chain ahead of the injector is one drawn tube and nothing is
 tracked in it.
 
+A complete mobile console. Guided commissioning has a portrait composition and touch-sized
+focused controls, but the sandbox still hides its telemetry rails below 1100 px and the guided
+mobile slice withholds the two event-display cards. How to navigate the full scientific
+readouts and detector views on a phone remains a game-design problem, not a panel-shrinking one.
+
 ## Known modelling limits, all deliberate
 
 - **TI 8 is 4.1 km** against the real 2.7 km, with a 437 m dipole, and **TI 2 is 3.2 km**

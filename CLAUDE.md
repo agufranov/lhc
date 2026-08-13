@@ -67,6 +67,12 @@ with a report and an efficiency, √(τ·T) says **when to dump it**, and **thin
 own**: UFOs, RF trips, a vacuum that eats the fill, a sector quench, and once in a machine's
 lifetime the 2008 interconnect failure, which shakes the picture and turns the tunnel red. The
 press has opinions about all of it. See `docs/running.md`.
+
+The normal page now opens as a **guided commissioning shift**: one live objective and one
+existing operator command at a time take a new player through SPS ramp → beam 1 → beam 2 →
+LHC ramp → cogging → first luminosity. It advances only when `World` reaches the state, never
+when a button is merely pressed. `?sandbox=1` reveals the complete original console, and the
+guide can switch to it without resetting the machine. See `docs/gameplay.md`.
 What is not built: `docs/limits.md`.
 
 ## Where everything is written down
@@ -78,6 +84,7 @@ What is not built: `docs/limits.md`.
 | `docs/beamlines.md` | transfer and dump lines, kickers and septa, injection, where the injector is parked |
 | `docs/collisions.md` | detectors, luminosity, phasing and cogging, the interaction region, event displays |
 | `docs/running.md` | the mass spectra, fills and when to dump one, incidents, the log and the alarm |
+| `docs/gameplay.md` | guided commissioning, sandbox, progressive controls and the mobile front door |
 | `docs/impacts.md` | wall damage, particle cascades, the quench rule |
 | `docs/rendering.md` | anything in `src/render/` |
 | `docs/reference.md` | any number you are about to change or quote |
@@ -184,6 +191,8 @@ src/render/
   spectrum.ts    a mass spectrum, into the run panel's canvas
 src/ui/          hud.ts, controls.ts, eventPanel.ts, readout.ts, format.ts
   layout.ts      where every overlay box goes, worked out against the camera
+src/game/
+  guide.ts       the first commissioning shift, derived entirely from live World state
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
   browser/       page.ts, shot.ts, page-check.ts — headless Chrome (node types live here
                  only; see tsconfig.browser.json)

@@ -33,7 +33,7 @@ import {
   OVERHANG_ALLOWED,
   OVERLAY_PADDING,
 } from '../../src/ui/layout';
-import { collide, controlStates, open } from './page';
+import { collide, controlStates, open, press } from './page';
 
 interface Box {
   id: string;
@@ -361,6 +361,130 @@ for (const [width, height] of sizes) {
     );
 
     if (session.errors.length > 0) check('the page threw nothing', false, session.errors.join('; '));
+  } finally {
+    await session.close();
+  }
+}
+
+/**
+ * The progressive front door, separately from the sandbox above.
+ *
+ * The guide must follow the state the machine reaches, not the buttons the test clicked. This
+ * walks the same physical route as a new player, waiting at every ramp and transfer, then
+ * checks that the guide only declares success once a detector has luminosity.
+ */
+{
+  console.log('--- guided commissioning ---');
+  const session = await open(1280, 860, true, true);
+  try {
+    const state = async (): Promise<string> =>
+      session.page.evaluate(() => document.getElementById('panel-guide')?.dataset.state ?? '');
+    const reaches = async (want: string, seconds = 30): Promise<boolean> => {
+      try {
+        await session.page.waitForFunction(
+          (value: string) => document.getElementById('panel-guide')?.dataset.state === value,
+          { timeout: seconds * 1000 },
+          want,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    check('the guided shift opens on the first SPS ramp', (await state()) === 'beam-1-ramp');
+    await press(session.page, 'SPS → 450 GeV');
+    check('it waits for the SPS before offering TI 2', await reaches('beam-1-extract'));
+    await press(session.page, 'LHC beam 1');
+    check('beam 1 has to arrive before chapter 2 begins', await reaches('beam-2-fill'));
+    await press(session.page, 'fill SPS');
+    check('the chain delivers a real second batch', await reaches('beam-2-ramp'));
+    await press(session.page, 'SPS → 450 GeV');
+    check('TI 8 appears only at 450 GeV', await reaches('beam-2-extract'));
+    await press(session.page, 'LHC beam 2');
+    check('both beams have to arrive before the LHC ramp', await reaches('lhc-ramp'));
+    await press(session.page, 'ramp → 6.8 TeV');
+    check('cogging is offered only at flat top', await reaches('cog'));
+    await press(session.page, 'auto');
+    check('commissioning completes only on detector luminosity', await reaches('complete', 60));
+
+    const completed = await session.page.evaluate(() => {
+      const guide = document.getElementById('panel-guide');
+      const world = (window as unknown as { lhc: { world: { detectors: Array<{ luminosity: number }> } } }).lhc.world;
+      return {
+        text: guide?.textContent ?? '',
+        luminosity: world.detectors.reduce((sum, detector) => sum + detector.luminosity, 0),
+        activeActions: document.querySelectorAll('#controls .control--guide-action').length,
+        visibleMachineActions: Array.from(document.querySelectorAll<HTMLElement>('#controls [data-action]'))
+          .filter((el) => getComputedStyle(el).display !== 'none').length,
+      };
+    });
+    check(
+      'the completed shift has data, no phantom next command and a sandbox exit',
+      completed.luminosity > 0 &&
+        completed.activeActions === 0 &&
+        completed.visibleMachineActions === 0 &&
+        completed.text.includes('continue in sandbox'),
+      `L ${completed.luminosity.toExponential(2)}, ${completed.activeActions} active actions`,
+    );
+    if (session.errors.length > 0) check('the guided page threw nothing', false, session.errors.join('; '));
+  } finally {
+    await session.close();
+  }
+}
+
+/** Portrait is a distinct composition: guide above, one action below, machine between. */
+{
+  console.log('--- guided phone 390x844 ---');
+  const session = await open(390, 844, true, true);
+  try {
+    const mobile = await session.page.evaluate(() => {
+      const box = (id: string) => {
+        const r = document.getElementById(id)!.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      const lhc = (window as unknown as {
+        lhc: {
+          world: { bounds: { maxY: number } };
+          renderer: { camera: { y(value: number): number } };
+        };
+      }).lhc;
+      const visibleActions = Array.from(document.querySelectorAll<HTMLElement>('#controls [data-action]'))
+        .filter((el) => getComputedStyle(el).display !== 'none');
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        scrollWidth: document.documentElement.scrollWidth,
+        guide: box('panel-guide'),
+        controls: box('controls'),
+        machineTop: lhc.renderer.camera.y(lhc.world.bounds.maxY),
+        active: visibleActions.map((el) => el.dataset.action ?? ''),
+      };
+    });
+    check(
+      'the guided phone has no horizontal overflow',
+      mobile.scrollWidth <= mobile.viewport.width,
+      `${mobile.scrollWidth} px document in ${mobile.viewport.width} px viewport`,
+    );
+    check(
+      'the guide and current command are fully on screen',
+      mobile.guide.left >= 0 &&
+        mobile.guide.right <= mobile.viewport.width &&
+        mobile.controls.left >= 0 &&
+        mobile.controls.right <= mobile.viewport.width &&
+        mobile.controls.bottom <= mobile.viewport.height,
+      `guide ${Math.round(mobile.guide.width)} px, controls ${Math.round(mobile.controls.width)} px`,
+    );
+    check(
+      'the mobile camera puts the machine below the guide and above the controls',
+      mobile.machineTop >= mobile.guide.bottom && mobile.guide.bottom < mobile.controls.top,
+      `guide ends ${Math.round(mobile.guide.bottom)}, machine starts ${Math.round(mobile.machineTop)}, controls start ${Math.round(mobile.controls.top)}`,
+    );
+    check(
+      'only the current machine action is exposed on the phone',
+      mobile.active.length === 1 && mobile.active[0] === 'sps-ramp-up',
+      mobile.active.join(', ') || 'none',
+    );
+    if (session.errors.length > 0) check('the guided phone threw nothing', false, session.errors.join('; '));
   } finally {
     await session.close();
   }

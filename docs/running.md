@@ -109,7 +109,8 @@ months lost.
 Three rules hold the system together:
 
 - **Off unless asked.** `IncidentSystem.enabled` is false by default and `main.ts` switches it
-  on. A headless run is a measurement and a measurement with random interruptions is not one —
+  on in sandbox. It stays off during guided commissioning, before machine protection has been
+  introduced. A headless run is a measurement and a measurement with random interruptions is not one —
   at these rates about a quarter of `check`'s thirty-second blocks would be interrupted, and
   every number in `reference.md` would become a number *usually*. The browser gates open the
   page with `?quiet=1` for the same reason, and then force the one they want to test.

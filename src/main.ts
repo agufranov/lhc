@@ -7,6 +7,7 @@ import { Renderer } from './render/renderer';
 import { Hud } from './ui/hud';
 import { Controls } from './ui/controls';
 import { eventCardBoxes, machineBorders, publishLayout } from './ui/layout';
+import { GameGuide } from './game/guide';
 
 registerBackend(cpuBackendFactory);
 registerBackend(webgpuBackendFactory);
@@ -16,6 +17,8 @@ const canvas = document.getElementById('stage') as HTMLCanvasElement;
 // One world: two rings, four lines, one particle array, one backend. A bunch crossing
 // from the injector to the collider is not an event anybody has to handle.
 const world = new World();
+const query = new URLSearchParams(location.search);
+const quiet = query.has('quiet');
 
 const renderer = new Renderer(canvas);
 const hud = new Hud(world);
@@ -53,6 +56,15 @@ function overlayChrome(): { title: number; controls: number } {
   return { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight };
 }
 
+/** On a phone the guide is a top sheet, so the machine starts underneath its measured box. */
+function cameraChrome(): { title: number; controls: number } {
+  const chrome = overlayChrome();
+  return {
+    title: chrome.title + guide.mobileHeight + (guide.mobileHeight > 0 ? 8 : 0),
+    controls: chrome.controls,
+  };
+}
+
 /**
  * Fits the machine, keeping it out from under the title and the buttons.
  *
@@ -61,7 +73,7 @@ function overlayChrome(): { title: number; controls: number } {
  * where they were.
  */
 function fitCamera(): void {
-  renderer.resize(world, machineBorders(overlayChrome()));
+  renderer.resize(world, machineBorders(cameraChrome()));
 }
 
 const trail = new Float32Array(16_384 * TRAIL_STRIDE);
@@ -104,6 +116,18 @@ const controls = new Controls(controlsRoot, world, {
   },
 });
 
+const guide = new GameGuide(
+  document.getElementById('panel-guide')!,
+  world,
+  controls,
+  query.has('sandbox'),
+  {
+    onModeChange(sandbox) {
+      world.incidents.enabled = !quiet && sandbox;
+    },
+  },
+);
+
 async function swapBackend(id: string): Promise<void> {
   const factory = getBackend(id);
   if (!factory) return;
@@ -123,13 +147,13 @@ async function swapBackend(id: string): Promise<void> {
  * which is the only way to test the alarm banner and the shake, since both are things the DOM
  * and the canvas do rather than things the physics knows. Nothing in the app reads it back.
  */
-(window as unknown as { lhc: unknown }).lhc = { world, renderer };
+(window as unknown as { lhc: unknown }).lhc = { world, renderer, guide };
 
 async function boot(): Promise<void> {
   // Things go wrong on their own in the app, and never in a measurement — see
   // `IncidentSystem.enabled`. `?quiet=1` is how the browser gates get a machine that will
   // still be running two colliding beams when they come to measure the overlay.
-  world.incidents.enabled = !new URLSearchParams(location.search).has('quiet');
+  world.incidents.enabled = !quiet && guide.isSandbox;
   world.attachBackend(await cpuBackendFactory.create());
   // The injector starts with a batch in it and the collider starts empty: filling the
   // collider is something you do, not something that has already happened.
@@ -144,9 +168,6 @@ function frame(now: number): void {
   lastFrame = now;
   fps = fps * 0.9 + (1 / Math.max(dtWall, 1e-4)) * 0.1;
 
-  fitCamera();
-  fitOverlay();
-
   let steps = 0;
   const t0 = performance.now();
   if (!paused) {
@@ -156,6 +177,12 @@ function frame(now: number): void {
     // this the comet is drawn a straight line from one to the other, across the picture.
     for (const id of r.spawned) renderer.clearBeamTrail(id);
   }
+
+  // The guide advances from the state the machine actually reached, then the camera measures
+  // its new box. A button press alone never advances a chapter.
+  guide.update();
+  fitCamera();
+  fitOverlay();
 
   const trailCount = world.backend ? world.backend.drainTrail(trail) : 0;
   renderer.render(world, trail, trailCount, paused ? 0 : dtWall);
@@ -171,6 +198,11 @@ function frame(now: number): void {
 // instantly — 15 H at 11 kA has to dump through the extraction resistors first. Clicking
 // a quenched one starts it cooling back to 1.9 K.
 canvas.addEventListener('mousemove', (e) => {
+  if (!guide.isSandbox) {
+    renderer.hovered = null;
+    canvas.style.cursor = 'default';
+    return;
+  }
   const rect = canvas.getBoundingClientRect();
   renderer.hovered = renderer.pick(world, e.clientX - rect.left, e.clientY - rect.top);
   canvas.style.cursor = renderer.hovered ? 'pointer' : 'default';
@@ -181,6 +213,7 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 canvas.addEventListener('click', (e) => {
+  if (!guide.isSandbox) return;
   const rect = canvas.getBoundingClientRect();
   const hit = renderer.pick(world, e.clientX - rect.left, e.clientY - rect.top);
   if (hit) hit.machine.toggleCircuit(hit.arc);
