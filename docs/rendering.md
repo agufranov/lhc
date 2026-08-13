@@ -77,6 +77,47 @@ magnify the injector and the collider's arc runs straight across the window behi
   would otherwise be choosing *which* part of the machine to cover rather than whether to cover
   any, and it chose a card 500 px over the collider's arc.
 
+## The narrow layout: a sheet, not a squeezed desktop
+
+Under `MOBILE_WIDTH` (1100 px, one number read by both the stylesheet and `matchMedia`) the
+readouts leave their columns and go into a **sheet along the bottom of the window**, and the
+picture is fitted above it. `ui/sheet.ts` **moves the same panel elements** rather than building
+mobile copies of them: there is one BEAM readout in this app and one line of `hud.ts` writing to
+it, and which column it is standing in is a fact about the window. The experiments' cards move
+in too, as tabs, which is the only honest answer to "where does a 480 px card go on a 390 px
+screen".
+
+The sheet publishes its height, and that height is used twice: the camera is fitted above it
+(`overlayChrome` adds it to the button bar), and the bar is lifted by it in the stylesheet
+(`--sheet-height`). The second one is not an optimisation — the sheet is fixed to the bottom of
+the window and the bar is in the overlay's grid, so without it the first phone screenshot had
+**no controls on it at all**.
+
+So the invariant holds at 390 px in its original form: no panel is drawn over the machine,
+because the machine is fitted into what the panels left. What a small screen costs instead is
+size, and the numbers are worth keeping:
+
+- the bar is **two rows and no more** — the places on one, everything pressable on the other,
+  both scrolling sideways rather than wrapping. At four rows it took 200 px and left the whole
+  complex drawn 120 px across.
+- the sheet is **34 vh**, and it folds away to its tab strip.
+- **the camera's places are what make the machine usable at this size**, and this is the part
+  that could not have been designed around: the complex on a phone is a ring 150 px across, and
+  going to the injector or an experiment is the only way to see anything in it.
+
+### Names are drawn only where there is room for them
+
+Sixteen labels go round a ring — eight arcs and eight points — and how much screen each gets is
+the ring's drawn circumference divided between them. `LABEL_SPACING_MIN` is 34 px of that
+spacing, which is one test with no modes in it: it takes the labels off a phone and off a
+zoomed-out camera alike, and puts them back on a desktop where they are 150 px apart and are
+what makes the picture a diagram.
+
+Two kinds of label ignore it. **The rings and the experiments** are what identify the picture,
+there are four of them, and a picture with nothing named on it is not a diagram of anything.
+**A fault is not a name**: a quenched or switched-off sector says so at any size, because the
+screen with no room for labels is also the screen with no room for a POWER panel.
+
 ## What is magnified, and what is not
 
 **The beam is never magnified.** Where the comet is drawn is where the integrator put it, and

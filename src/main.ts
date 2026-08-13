@@ -6,7 +6,8 @@ import { webgpuBackendFactory } from './sim/backends/webgpuBackend';
 import { Renderer } from './render/renderer';
 import { Hud } from './ui/hud';
 import { Controls } from './ui/controls';
-import { eventCardBoxes, machineBorders, publishLayout } from './ui/layout';
+import { Sheet } from './ui/sheet';
+import { MOBILE_WIDTH, eventCardBoxes, machineBorders, publishLayout } from './ui/layout';
 
 registerBackend(cpuBackendFactory);
 registerBackend(webgpuBackendFactory);
@@ -56,10 +57,26 @@ function fitOverlay(): void {
   publishLayout(document.documentElement, boxes, bands);
 }
 
-/** The title and the button bar, as tall as the browser actually made them. */
+/**
+ * The title and the button bar, as tall as the browser actually made them — plus the sheet,
+ * on a window narrow enough to have one.
+ *
+ * The sheet stands along the bottom over the picture, so as far as the camera is concerned it
+ * is more button bar: the machine is fitted above whatever the overlay actually took, which is
+ * how "no panel is drawn over the machine" survives a 390 px screen.
+ */
 function overlayChrome(): { title: number; controls: number } {
-  return { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight };
+  return { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight + sheet.height };
 }
+
+/**
+ * Narrow enough that the readouts cannot stand beside the machine.
+ *
+ * One question asked once: the stylesheet answers it with a media query and the app with this,
+ * and they are the same number because a layout half in one mode and half in the other is the
+ * bug this whole file exists to avoid.
+ */
+const narrow = window.matchMedia(`(max-width: ${MOBILE_WIDTH}px)`);
 
 /**
  * Fits the machine, keeping it out from under the title and the buttons.
@@ -69,8 +86,19 @@ function overlayChrome(): { title: number; controls: number } {
  * where they were.
  */
 function fitCamera(dtWall = 0): void {
-  renderer.resize(world, machineBorders(overlayChrome()), dtWall);
+  renderer.resize(
+    world,
+    // On a phone the overlay has no side columns at all, so a zoomed view may use the whole
+    // width of the window rather than keeping the rails' clear.
+    { ...machineBorders(overlayChrome()), sides: narrow.matches ? 0 : undefined },
+    dtWall,
+  );
 }
+
+const sheet = new Sheet({
+  ipA: world.detectors[0].config.name,
+  ipB: world.detectors[1].config.name,
+});
 
 const trail = new Float32Array(16_384 * TRAIL_STRIDE);
 
@@ -161,6 +189,12 @@ function frame(now: number): void {
   // by `hidden`, so nothing about the layout changes and the rails do not jump; see
   // `docs/rendering.md`.
   overlayRoot.classList.toggle('is-flying', renderer.flying);
+  // Which readouts are in the sheet, and whether an experiment has earned a tab in it yet.
+  sheet.attach(narrow.matches);
+  sheet.update();
+  // The bar stands on top of the sheet. Published rather than assumed, because the sheet is
+  // as tall as its contents up to a cap and the reader can fold it away.
+  document.documentElement.style.setProperty('--sheet-height', `${sheet.height}px`);
 
   let steps = 0;
   const t0 = performance.now();

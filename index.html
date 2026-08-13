@@ -54,6 +54,16 @@
       <section class="panel panel--event" id="panel-ip-b" hidden></section>
 
       <footer class="controls" id="controls"></footer>
+
+      <!-- The bottom sheet: where the machine readouts go on a window too narrow to stand
+           them beside the machine. It holds the *same* panel elements — `ui/sheet.ts` moves
+           them in and hands them back — so there is one BEAM readout in this app and one line
+           of `hud.ts` writing to it, whatever column it is standing in. Its height is added to
+           what the camera keeps clear, so "no panel over the machine" survives a phone. -->
+      <div class="sheet" id="sheet" hidden>
+        <nav class="sheet-tabs" id="sheet-tabs"></nav>
+        <div class="sheet-body" id="sheet-body"></div>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

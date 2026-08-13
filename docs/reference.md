@@ -59,6 +59,13 @@ world extent 12.03 x 10.14 km; collider half-aperture 15.2 px, injector 4.0 px a
 overlay at 1280x860   collider tunnel wall ends at 774 px, the experiments' cards start at
        784, the injector spans x 918..1081 / y 308..469 — so a card sits above it and a
        card below it. check:render asserts the first of those three.
+labels drawn        LABEL_SPACING_MIN = 56 px between neighbours round a ring. On a desktop
+       overview that names all 8 sectors and 8 points of the collider and none of the
+       injector's (a quarter of the size, and its names would run through the kicker labels
+       in the same annulus); at the injector's own view, all 14 of both rings'; at 390x844,
+       none. The chain has its own test — 48 px of drawn tube, which is 65 on a desktop and
+       13 on a phone. Ring names, experiment names, and any quenched or switched-off sector
+       are drawn at every size
 camera views at 1919x906 (magnification against the overview, which is 1.00x):
        SPS 3.64x, ATLAS/CMS 3.35x, TI 2/TI 8 1.31x, LHC 0.96x — the collider already fills
        the overview's height, so its own view is a pan and not a zoom. There is no view of

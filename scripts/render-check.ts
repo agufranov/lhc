@@ -1860,5 +1860,96 @@ console.log('--- the mass spectrum, drawn ---');
   );
 }
 
+
+// --- names, and where there is room for them ----------------------------------------------
+//
+// Sixteen labels go round a ring. On a desktop each has 150 px of arc to itself and they are
+// what makes the picture a diagram; on a 390 px phone the same sixteen have 20 px each and the
+// machine is drawn inside a wreath of overlapping type. So the small labels have a spacing
+// threshold — and the two things that must survive it anyway are what identifies the picture
+// (the rings, the experiments) and what reports a fault.
+{
+  console.log('--- names, and where there is room for them ---');
+  const w = new World();
+  w.attachBackend(new CpuBackend());
+  const seen: Record<string, { sectors: number; points: number; rings: number; experiments: number }> = {};
+  for (const [W, H, where, view] of [
+    [1919, 906, 'desktop', 'complex'],
+    [390, 844, 'phone', 'complex'],
+    [1919, 906, 'at the injector', 'sps'],
+  ] as const) {
+    const c = makeCanvas(W, H);
+    const r = new Renderer(c as unknown as HTMLCanvasElement);
+    r.resize(w, { top: 28, bottom: 52 });
+    r.setView(view);
+    r.resize(w, { top: 28, bottom: 52 }, 10);
+    c.ctx.texts.length = 0;
+    r.render(w, trail, 0, 1 / 60);
+    const texts = c.ctx.texts.map((t) => t.text);
+    seen[where] = {
+      sectors: texts.filter((t) => /^S\d\d$/.test(t)).length,
+      points: texts.filter((t) => /^P\d$/.test(t)).length,
+      rings: texts.filter((t) => t === 'LHC' || t === 'SPS').length,
+      experiments: texts.filter((t) => t === 'ATLAS' || t === 'CMS').length,
+    };
+  }
+  console.log(
+    `   desktop: ${seen.desktop.sectors} sectors, ${seen.desktop.points} points · ` +
+      `phone: ${seen.phone.sectors} sectors, ${seen.phone.points} points`,
+  );
+  // Counted off the lattice rather than typed in: the collider has eight arcs and the injector
+  // six, and a ring that gains a sector should not need this file edited.
+  const colliderArcs = w.collider.ring.arcs.length;
+  const colliderStraights = w.collider.ring.straights.length;
+  const injectorArcs = w.injector.ring.arcs.length;
+  check(
+    'every sector and point of the collider is named on a desktop',
+    seen.desktop.sectors === colliderArcs && seen.desktop.points === colliderStraights,
+    `${seen.desktop.sectors} of ${colliderArcs} sectors, ${seen.desktop.points} of ${colliderStraights} points`,
+  );
+  check(
+    'and the injector, a quarter of the size, is not named in detail from the overview',
+    seen.desktop.sectors === colliderArcs,
+    'its own names would run through the kicker labels standing in the same ring',
+  );
+  check(
+    'but they are there when you go and look at it',
+    seen['at the injector'].sectors >= injectorArcs,
+    `${seen['at the injector'].sectors} sectors at the injector's own view`,
+  );
+  check(
+    'and none of them is drawn on a phone, where they would overlap',
+    seen.phone.sectors === 0 && seen.phone.points === 0,
+  );
+  check(
+    'but both rings and both experiments are named at every size',
+    seen.phone.rings === 2 && seen.phone.experiments === 2 && seen.desktop.rings === 2,
+    `phone: ${seen.phone.rings} rings, ${seen.phone.experiments} experiments`,
+  );
+
+  // A fault is not a name. It is the machine reporting something, and a threshold that hides
+  // it is a threshold that hides a quenched sector on the one screen with no room for a POWER
+  // panel either.
+  w.collider.circuits[2].deposit(3.5e8);
+  const c = makeCanvas(390, 844);
+  const r = new Renderer(c as unknown as HTMLCanvasElement);
+  r.resize(w, { top: 28, bottom: 52 });
+  c.ctx.texts.length = 0;
+  r.render(w, trail, 0, 1 / 60);
+  check(
+    'a quenched sector still says so on a phone',
+    c.ctx.texts.some((t) => t.text.includes('QUENCH')),
+    c.ctx.texts.filter((t) => t.text.includes('QUENCH')).map((t) => t.text).join(', '),
+  );
+  w.collider.toggleCircuit(5);
+  c.ctx.texts.length = 0;
+  r.render(w, trail, 0, 1 / 60);
+  check(
+    'and so does a sector somebody has switched off',
+    c.ctx.texts.some((t) => t.text.endsWith(' off')),
+    c.ctx.texts.filter((t) => t.text.endsWith(' off')).map((t) => t.text).join(', '),
+  );
+}
+
 console.log(failures === 0 ? '\nall render checks passed' : `\n${failures} render check(s) FAILED`);
 if (failures > 0) (globals.process as { exitCode: number }).exitCode = 1;

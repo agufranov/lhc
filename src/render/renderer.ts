@@ -113,6 +113,24 @@ const SHOWER_SCALE = 180;
 const IMPACT_FLASH = 1.6; // seconds
 /** How long a kicker stays lit after a pulse [ms]. */
 const KICKER_FLASH = 900;
+/**
+ * How much screen a name on the machine needs before it is worth drawing [px].
+ *
+ * The spacing between neighbouring labels round a ring, not the width of one: `S12` is about
+ * 24 px of type and this is what keeps it from touching `P3` next to it. Below it the small
+ * labels are not drawn at all — see `drawLabels`.
+ *
+ * **56 and not 34**, which is what it was first tried at, because a ring's labels are not the
+ * only things standing round it: the kickers and the transfer lines put their own names in the
+ * same annulus. At 34 the injector on the overview drew `S12` through `MKI · MSI`, and the
+ * collider on a phone drew `P4` through `MKD · MSD`. At 56 the collider keeps all sixteen of
+ * its names on any desktop and loses them on a phone, and the injector — a quarter of the size
+ * — keeps its own only when you go and look at it. Which is the rule stated plainly: a machine
+ * is named in detail when it is the thing being looked at.
+ */
+const LABEL_SPACING_MIN = 56;
+/** Drawn length the injector chain needs before its two lines of type are worth writing [px]. */
+const CHAIN_LABEL_MIN = 48;
 
 /**
  * The experimental insertions, in units of the ring's half-aperture like everything else
@@ -201,6 +219,8 @@ export class Renderer {
   /** The overlay furniture the last fit was made against. See `resize`. */
   private chromeTop = 0;
   private chromeBottom = 0;
+  /** How wide the overlay's side columns are, which is what a zoomed view is fitted inside. */
+  private chromeSides = 0;
 
   /** Last drawn point per particle, so each comet's tail joins up across frames. */
   private lastBeam = new Map<number, { x: number; y: number }>();
@@ -240,18 +260,22 @@ export class Renderer {
    */
   resize(
     world: World,
-    chrome: { top: number; bottom: number } = { top: 0, bottom: 0 },
+    chrome: { top: number; bottom: number; sides?: number } = { top: 0, bottom: 0 },
     dtWall = 0,
   ): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
+    // How wide the overlay's side columns are. On a phone there are none — the readouts are
+    // in a sheet along the bottom — and a zoomed view may then have the whole width.
+    const sides = chrome.sides ?? OVERLAY_PADDING + READOUT_COLUMN + OVERLAY_GAP;
     const resized =
       w !== this.cssWidth ||
       h !== this.cssHeight ||
       dpr !== this.dpr ||
       chrome.top !== this.chromeTop ||
-      chrome.bottom !== this.chromeBottom;
+      chrome.bottom !== this.chromeBottom ||
+      sides !== this.chromeSides;
 
     if (!resized && !this.flight && !this.pendingView) return;
 
@@ -261,6 +285,7 @@ export class Renderer {
       this.cssHeight = h;
       this.chromeTop = chrome.top;
       this.chromeBottom = chrome.bottom;
+      this.chromeSides = sides;
       for (const c of [this.canvas, this.beamCanvas]) {
         c.width = Math.max(1, Math.round(w * dpr));
         c.height = Math.max(1, Math.round(h * dpr));
@@ -336,7 +361,7 @@ export class Renderer {
    * over the machine" true by construction rather than by measurement.
    */
   private borders(): Borders {
-    const side = this.viewId === 'complex' ? MARGIN : OVERLAY_PADDING + READOUT_COLUMN + OVERLAY_GAP;
+    const side = this.viewId === 'complex' ? MARGIN : Math.max(MARGIN, this.chromeSides);
     return {
       left: side,
       right: side,
@@ -1673,8 +1698,38 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  /**
+   * Names on the machine, and **only where there is room to read them**.
+   *
+   * Sixteen labels go round a ring — eight arcs and eight points — and how much screen each
+   * gets is the ring's drawn circumference divided between them. On a 390 px phone the whole
+   * complex puts that at 20 px a label and the picture is a wreath of overlapping type; on a
+   * desktop it is 150 px and they are the thing that makes the picture a diagram. So the small
+   * labels are drawn when their spacing clears `LABEL_SPACING_MIN` and not otherwise, which is
+   * the same rule for a small window as for a camera zoomed out — one test, no modes.
+   *
+   * What is never dropped: the name of each ring, and the experiments. Those two identify what
+   * is on screen, there are four of them altogether, and a picture with nothing named on it is
+   * not a diagram of anything.
+   */
   private drawLabels(world: World): void {
     const { ctx, camera } = this;
+    /** Screen px between neighbouring labels round a ring. */
+    const spacing = (ring: Ring): number => {
+      const radius = (ring.bounds.maxX - ring.bounds.minX) / 2;
+      const count = Math.max(ring.arcs.length + ring.straights.length, 1);
+      return (2 * Math.PI * camera.len(radius)) / count;
+    };
+    /**
+     * Room for the small labels attached to a machine — its kickers, and the chain feeding it.
+     *
+     * **Asked of the machine the label is attached to**, which is the whole of the fix: the
+     * first version took the larger of the two rings, so a camera looking at the collider drew
+     * `LINAC4 · PSB · PS`, `MKI · MSI` and `TI 2` on top of each other around an injector 40 px
+     * across, which is precisely the pile-up the threshold exists to prevent.
+     */
+    const roomAt = (machine: number): boolean =>
+      spacing(world.machines[machine].ring) >= LABEL_SPACING_MIN;
     ctx.globalCompositeOperation = 'source-over';
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'center';
@@ -1685,8 +1740,17 @@ export class Renderer {
       const cx = (ring.bounds.minX + ring.bounds.maxX) / 2;
       const cy = (ring.bounds.minY + ring.bounds.maxY) / 2;
 
+      const room = spacing(ring) >= LABEL_SPACING_MIN;
       for (const arc of ring.arcs) {
+        // A quenched or switched-off sector says so whatever the scale: it is not a name, it
+        // is the machine reporting a fault, and a fault nobody can see is a fault nobody fixes.
         const circuit = machine.circuits[arc.index];
+        const faulted =
+          !circuit.enabled ||
+          circuit.state === 'quenching' ||
+          circuit.state === 'quenched' ||
+          circuit.state === 'recovering';
+        if (!room && !faulted) continue;
         const phi = arc.phiStart + arc.dPhi / 2;
         const wx = arc.cx + arc.radius * Math.cos(phi);
         const wy = arc.cy + arc.radius * Math.sin(phi);
@@ -1709,7 +1773,7 @@ export class Renderer {
       }
 
       ctx.fillStyle = COLORS.label;
-      for (const s of ring.straights) {
+      for (const s of room ? ring.straights : []) {
         const wx = (s.x1 + s.x2) / 2;
         const wy = (s.y1 + s.y2) / 2;
         const [lx, ly] = pushOut(wx, wy, cx, cy, 34 / camera.scale);
@@ -1746,7 +1810,8 @@ export class Renderer {
         ctx.fillText(line.config.name, camera.x(mx + mid.dy * a * 3), camera.y(my - mid.dx * a * 3));
       }
       ctx.fillStyle = COLORS.label;
-      ctx.fillText(
+      if (roomAt(line.config.fromMachine))
+        ctx.fillText(
         line.isDump ? 'MKD · MSD' : 'MKI · MSI',
         camera.x(line.entry.x - line.entry.dx * a * 4 + line.entry.dy * a * 4),
         camera.y(line.entry.y - line.entry.dy * a * 4 - line.entry.dx * a * 4),
@@ -1761,7 +1826,12 @@ export class Renderer {
       }
     }
 
+    // The chain gets its own test rather than the injector's, because it is not a label in a
+    // ring's annulus competing with fifteen others — it is two lines of type in open space
+    // beside a drawn tube, and what decides whether to write them is whether that tube is
+    // long enough on screen to be worth naming. 65 px on a desktop overview, 13 on a phone.
     const { chain } = world;
+    if (camera.len(Math.hypot(chain.x2 - chain.x1, chain.y2 - chain.y1)) < CHAIN_LABEL_MIN) return;
     ctx.fillStyle = COLORS.label;
     const cmx = camera.x((chain.x1 + chain.x2) / 2);
     const cmy = camera.y((chain.y1 + chain.y2) / 2);

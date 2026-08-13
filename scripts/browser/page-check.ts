@@ -33,7 +33,7 @@ import {
   OVERHANG_ALLOWED,
   OVERLAY_PADDING,
 } from '../../src/ui/layout';
-import { collide, controlStates, open } from './page';
+import { collide, controlStates, open, selectView } from './page';
 
 interface Box {
   id: string;
@@ -382,6 +382,139 @@ for (const [width, height] of sizes) {
         boom.logged > 0,
       `shake ${boom.shake.toFixed(2)}, ${boom.logged} log lines, banner "${boom.banner.slice(0, 40)}…"`,
     );
+
+    if (session.errors.length > 0) check('the page threw nothing', false, session.errors.join('; '));
+  } finally {
+    await session.close();
+  }
+}
+
+// --- the narrow layout, measured on a phone -------------------------------------------------
+//
+// A different shape rather than a squeezed desktop: the readouts are in a sheet along the
+// bottom and the picture is fitted above it. What has to be true is the same thing that has to
+// be true at 2560 — no panel is drawn over the machine — plus the two things only a small
+// screen can get wrong: something running off the side, and a control too small for a finger.
+{
+  const [width, height] = [390, 844];
+  console.log(`--- ${width}x${height} (a phone) ---`);
+  const session = await open(width, height);
+  try {
+    await collide(session.page, 2);
+    const m = await session.page.evaluate(() => {
+      const lhc = (window as unknown as {
+        lhc: {
+          renderer: { camera: { y(v: number): number; len(v: number): number }; view: string };
+          world: { collider: { ring: { bounds: { minY: number }; config: { apertureRadius: number } } } };
+        };
+      }).lhc;
+      const box = (sel: string) => {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (!el || el.hidden || getComputedStyle(el).display === 'none') return null;
+        const r = el.getBoundingClientRect();
+        return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      const inside = (child: string, parent: string): boolean => {
+        const c = document.querySelector(child);
+        const p = document.querySelector(parent);
+        return !!c && !!p && p.contains(c);
+      };
+      // The lowest the collider's tunnel wall is drawn, in screen pixels.
+      const ring = lhc.world.collider.ring;
+      const wall = lhc.renderer.camera.len(ring.config.apertureRadius * 1.18);
+      return {
+        sheet: box('#sheet'),
+        controls: box('#controls'),
+        title: box('.title'),
+        beam: box('#panel-beam'),
+        eventA: box('#panel-ip-a'),
+        machineBottom: lhc.renderer.camera.y(ring.bounds.minY) + wall,
+        beamInSheet: inside('#panel-beam', '#sheet-body'),
+        eventInSheet: inside('#panel-ip-a', '#sheet-body'),
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+        // Only what is on screen: the clusters belonging to the other places are in the DOM
+        // with `display: none` on them, and a control that is not shown is 0 px tall.
+        smallestTap: Math.min(
+          ...Array.from(document.querySelectorAll('.control--tab, .sheet-tab, .control--button'))
+            .filter((el) => (el as HTMLElement).offsetParent !== null)
+            .map((el) => (el as HTMLElement).getBoundingClientRect().height),
+        ),
+        crushed: ['panel-beam', 'panel-physics', 'panel-run', 'panel-power', 'panel-injector']
+          .map((id) => {
+            const el = document.getElementById(id);
+            return { id, by: el ? Math.max(0, el.scrollHeight - el.clientHeight) : 0 };
+          })
+          .filter((p) => p.by > 1),
+      };
+    });
+
+    check('the readouts are in the sheet', m.beamInSheet && m.beam !== null);
+    check(
+      'the machine is drawn above the sheet, not behind it',
+      m.sheet !== null && m.machineBottom <= m.sheet.top + 1,
+      `machine ends at ${m.machineBottom.toFixed(0)} px, the sheet starts at ${m.sheet?.top.toFixed(0)}`,
+    );
+    check(
+      'the button bar stands on top of the sheet',
+      m.controls !== null && m.sheet !== null && m.controls.bottom <= m.sheet.top + 1 && m.controls.top > 0,
+      `bar ${m.controls?.top.toFixed(0)}..${m.controls?.bottom.toFixed(0)}, sheet from ${m.sheet?.top.toFixed(0)}`,
+    );
+    check('nothing runs off the side of the window', m.overflow <= 0, `${m.overflow} px over`);
+    check(
+      'every control is big enough for a finger',
+      m.smallestTap >= 28,
+      `smallest is ${m.smallestTap.toFixed(0)} px`,
+    );
+    // Opened, not merely present: a panel in the sheet's DOM but on a tab nobody has pressed
+    // is `display: none` and would measure as anything at all.
+    const opened = await session.page.evaluate(() => {
+      const tab = Array.from(document.querySelectorAll('#sheet-tabs .sheet-tab')).find(
+        (t) => !(t as HTMLElement).hidden && /ATLAS|CMS/.test(t.textContent ?? ''),
+      );
+      if (!tab) return null;
+      (tab as HTMLButtonElement).click();
+      const panel = document.querySelector('#sheet-body .panel--event:not(.sheet-hidden)');
+      const sheet = document.getElementById('sheet');
+      if (!panel || !sheet) return null;
+      const p = panel.getBoundingClientRect();
+      const sh = sheet.getBoundingClientRect();
+      const canvas = panel.querySelector('.event-view')?.getBoundingClientRect();
+      // Inside the sheet's *columns*, and starting inside it. Not "ends inside it": the
+      // sheet's body scrolls, so a panel taller than 34 vh legitimately runs past the bottom
+      // of the visible box, and asserting otherwise measured the scroller rather than the
+      // layout. What would be a bug is a card standing beside or above the sheet, over the
+      // machine — which is what these two edges and the top are for.
+      return {
+        inside:
+          p.left >= sh.left - 1 &&
+          p.right <= sh.right + 1 &&
+          p.top >= sh.top - 1 &&
+          p.top < sh.bottom,
+        width: p.width,
+        picture: canvas?.width ?? 0,
+      };
+    });
+    check(
+      'an experiment is a tab in the sheet rather than a card over the machine',
+      m.eventInSheet && opened !== null && opened.inside && opened.picture > 100,
+      opened ? `${opened.width.toFixed(0)} px wide, picture ${opened.picture.toFixed(0)} px` : 'no experiment tab',
+    );
+    check(
+      'no panel has been crushed — the sheet scrolls, its panels do not',
+      m.crushed.length === 0,
+      m.crushed.map((c) => `${c.id} by ${c.by}`).join(', ') || 'none',
+    );
+
+    // The tabs are the only way round a machine this size, so they had better work.
+    await selectView(session.page, 'SPS');
+    // Field by field: a class instance does not survive being returned from the page, and the
+    // first version of this read `undefined` out of a perfectly good renderer.
+    const view = await session.page.evaluate(() => {
+      const r = (window as unknown as { lhc: { renderer: { view: string; flying: boolean } } }).lhc
+        .renderer;
+      return { view: r.view, flying: r.flying };
+    });
+    check('a place can be reached by tapping it', view.view === 'sps' && !view.flying, `at ${view.view}`);
 
     if (session.errors.length > 0) check('the page threw nothing', false, session.errors.join('; '));
   } finally {

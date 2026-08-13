@@ -129,6 +129,14 @@ npm run shot -- 1919 906 out.png   # a screenshot of the running toy, headless
   asset by an absolute `/…` path** at runtime; it resolves to the domain root and 404s there
   while working perfectly on the dev server.
 
+## Two layouts, one overlay
+
+Under `MOBILE_WIDTH` (1100 px) the readouts leave their columns for a **sheet along the bottom**
+and the picture is fitted above it — the same elements moved, not a second set built. Everything
+in `rendering.md` about panels and the machine still holds there, because the machine is fitted
+into what the panels left; what changes is that the camera's places stop being a convenience and
+become the only way to see anything. `check:page` measures both layouts.
+
 ## Seeing the page
 
 **There is a browser.** `puppeteer-core` drives the Chrome already installed on this machine,
@@ -192,6 +200,7 @@ src/render/
   spectrum.ts    a mass spectrum, into the run panel's canvas
 src/ui/          hud.ts, controls.ts, eventPanel.ts, readout.ts, format.ts
   layout.ts      where every overlay box goes, worked out against the camera
+  sheet.ts       the narrow layout: the readouts folded into a sheet along the bottom
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
   browser/       page.ts, shot.ts, page-check.ts — headless Chrome (node types live here
                  only; see tsconfig.browser.json)

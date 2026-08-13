@@ -157,6 +157,12 @@ tracked in it.
 - **The experiments' cards are hidden for the 0.75 s of a camera flight.** Coming out of a
   zoomed view the machine covers the whole window part-way through, and a card is a thing that
   stands beside the machine.
+- **On a phone the complex is a ring 150 px across, and the sector names are not drawn.** The
+  narrow layout keeps every panel off the machine by fitting the machine into what is left
+  (`rendering.md`), and what it cannot buy back is size: sixteen labels round a ring have 20 px
+  each at that scale, so below `LABEL_SPACING_MIN` they are dropped. What is still named is
+  each ring, each experiment, and any sector that has quenched or been switched off. The camera's
+  places are the answer to the rest, and are the reason the toy works at this size at all.
 - **A window under about 1700 px wide cannot hold the overlay the machine deserves.** The
   experiments' cards need ~440 px beside the readouts' 260 and there is not that much room
   outside the collider's arc; below it the cards retreat into the readout column and the

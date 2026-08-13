@@ -692,13 +692,244 @@ select {
   padding: 4px 6px;
 }
 
+/* ---------------------------------------------------------------------------------------
+   The narrow layout.
+
+   Not a squeezed desktop: a different shape. The readouts leave their columns and go into a
+   sheet along the bottom (`ui/sheet.ts` moves the same elements, it does not rebuild them),
+   the picture takes everything above it, and the camera is fitted into what is left — so the
+   one rule this overlay has, that no panel is drawn over the machine, holds at 390 px exactly
+   as it does at 2560. What makes it usable at all is that the camera has places to go: the
+   whole complex on a phone is a ring 300 px across, and the tabs are how you get inside it.
+
+   The breakpoint is `MOBILE_WIDTH` in `ui/layout.ts` and this number is the same number. The
+   app reads it with `matchMedia`, and a layout half in one mode and half in the other is the
+   bug both of them exist to avoid.
+   --------------------------------------------------------------------------------------- */
 @media (max-width: 1100px) {
   .overlay {
     grid-template-columns: 1fr;
+    padding: 8px;
+    gap: 8px;
   }
-  .rail,
-  .panel--compute,
-  .panel--physics {
+
+  /* The rails are empty in this mode — their panels are in the sheet — and an empty fixed
+     column would still take the clicks over the picture. */
+  .rail {
     display: none;
+  }
+
+  .title {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+
+  .title h1 {
+    font-size: 15px;
+    letter-spacing: 0.22em;
+  }
+
+  /* The strap line is the one thing here that is decoration: what the machine is doing is on
+     the ticker beside it, and it is the ticker that has to fit. */
+  .title .sub {
+    display: none;
+  }
+
+  /* The machine's own voice is the one piece of text that has to survive the small screen:
+     it is what says a batch arrived, a magnet quenched, or the fill is over. Two lines of it
+     at a fixed height, so the picture above it never resizes when something happens. */
+  .title .ticker {
+    flex: 1 1 100%;
+    font-size: 10px;
+    line-height: 1.35;
+    height: 27px;
+    white-space: normal;
+  }
+
+  /* **Three rows, each of which fits.** Everything in this layout is competing for the same
+     844 px and the bar is the part that grows — at four rows it took 200 px and left the whole
+     complex drawn 120 px across. So: the places, then what can be done at the one selected,
+     then the two controls that belong to no place at all. The first two scroll sideways rather
+     than wrapping; the last is pause and the dumps, which at 260 px always fit a phone.
+     Two rows was tried and does not: pause, a ramp, cogging and both dumps is 500 px of
+     button on a 390 px screen, and what overflowed was the dumps. */
+  .controls {
+    align-self: end;
+    justify-self: stretch;
+    width: 100%;
+    /* The sheet is fixed to the bottom of the window and the bar is in the overlay's grid, so
+       the bar has to be lifted clear of it by however tall it currently is. `main.ts`
+       publishes that. Without this the phone had no visible controls at all. */
+    margin-bottom: var(--sheet-height, 0px);
+    padding: 5px 6px;
+    gap: 5px;
+    border-radius: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  /* A label that wraps makes the whole bar a row taller. */
+  .controls button {
+    white-space: nowrap;
+  }
+
+  /* The captions name a cluster that is already the only one on screen. `dump` keeps its
+     one, because `beam 1` beside `beam 2` says nothing about what the button does to them. */
+  .control--cluster .caption {
+    display: none;
+  }
+
+  /* The places scroll sideways rather than wrapping: six of them at 390 px is a row and a
+     half, and a tab bar that reflows as the labels change length is a tab bar that moves
+     under the thumb. */
+  .control--tabs {
+    order: 1;
+    flex: 1 1 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .control--tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .control--tab {
+    flex: none;
+    /* A finger, not a pointer. */
+    padding: 7px 9px;
+  }
+
+  .control--pause {
+    order: 3;
+  }
+
+  /* `1 1 0` and `min-width: 0`, so a cluster with four buttons in it shrinks and scrolls
+     instead of pushing the dumps onto a row of their own. */
+  .control--cluster {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border: 0;
+    padding: 0;
+    gap: 5px;
+  }
+
+  .control--cluster::-webkit-scrollbar {
+    display: none;
+  }
+
+  .control--dump {
+    order: 4;
+    flex: none;
+    border: 0;
+    padding: 0;
+    gap: 5px;
+  }
+
+  .control--button {
+    padding: 7px 9px;
+  }
+
+  /* The two experiments' cards are not placed beside the machine here — there is no beside.
+     They are a tab in the sheet, and the sheet is what positions them.
+
+     By id, because the published box is set by id: a card left with its `--event-a-width` was
+     480 px wide inside a 390 px sheet, which `check:page` caught by measuring it. */
+  #panel-ip-a,
+  #panel-ip-b {
+    position: static;
+    top: auto;
+    left: auto;
+    width: auto;
+  }
+
+  .panel--event .event-body {
+    /* 196 px of picture and 248 px of numbers do not fit 390 px of phone side by side. */
+    grid-template-columns: 1fr;
+  }
+
+  .sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    /* A third of the window, and the machine gets the rest. The readouts scroll inside it —
+       BEAM alone is 400 px of rows — and folding it away gives the picture everything. */
+    max-height: 34vh;
+    background: rgba(6, 11, 20, 0.94);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+  }
+
+  .sheet.is-collapsed .sheet-body {
+    display: none;
+  }
+
+  .sheet-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sheet-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sheet-tab {
+    flex: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 7px 10px;
+    cursor: pointer;
+  }
+
+  .sheet-tab.is-current {
+    color: #e8f2ff;
+    background: rgba(60, 110, 170, 0.5);
+    border-color: rgba(120, 180, 240, 0.4);
+  }
+
+  /* Pushed to the far end, because it is the one control here that is not a place to go. */
+  .sheet-toggle {
+    margin-left: auto;
+    flex: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    padding: 7px 6px;
+    cursor: pointer;
+  }
+
+  .sheet-body {
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sheet-body .panel {
+    width: auto;
+  }
+
+  .sheet-hidden {
+    display: none !important;
   }
 }

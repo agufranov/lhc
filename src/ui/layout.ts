@@ -18,6 +18,21 @@
 export const OVERLAY_PADDING = 16;
 export const OVERLAY_GAP = 16;
 
+/**
+ * The window width below which the readouts cannot stand beside the machine [CSS px].
+ *
+ * Two columns of 260 plus a card of 480 plus something worth calling a picture is what the
+ * desktop layout needs, and `limits.md` has measured for a while that under about 1700 px it
+ * is already giving things up. This is far below that: it is the width at which it stops being
+ * a cramped desktop and becomes **a different layout** — the readouts fold into a sheet along
+ * the bottom and the camera is fitted above it.
+ *
+ * It is in this file, and exported, because the stylesheet and the app both have to ask the
+ * same question and get the same answer. A layout half in one mode and half in the other is
+ * exactly the class of bug `check:page` exists for.
+ */
+export const MOBILE_WIDTH = 1100;
+
 /** The machine-readout column: beam and physics on the left, power and injector on the right. */
 export const READOUT_COLUMN = 260;
 
