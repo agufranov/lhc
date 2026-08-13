@@ -88,10 +88,12 @@ in too, as tabs, which is the only honest answer to "where does a 480 px card go
 screen".
 
 The sheet publishes its height, and that height is used twice: the camera is fitted above it
-(`overlayChrome` adds it to the button bar), and the bar is lifted by it in the stylesheet
+(`overlayChrome` adds it to the desk), and the desk is lifted by it in the stylesheet
 (`--sheet-height`). The second one is not an optimisation — the sheet is fixed to the bottom of
-the window and the bar is in the overlay's grid, so without it the first phone screenshot had
-**no controls on it at all**.
+the window and the desk is in the overlay's grid, so without it the first phone screenshot had
+**no controls on it at all**. The places strip does the same thing one layer lower: it is fixed
+to the very bottom of the window, `main.ts` publishes `--places-height`, and the sheet stands on
+that as the desk stands on the sheet.
 
 **It starts folded, and shows one line of numbers while it is.** Open, it is a third of the
 window and the whole complex is drawn 260 px across; folded, the machine gets 500 px of an
@@ -110,18 +112,26 @@ So the invariant holds at 390 px in its original form: no panel is drawn over th
 because the machine is fitted into what the panels left. What a small screen costs instead is
 size, and the numbers are worth keeping:
 
-- the bar is **three rows, each of which fits**: the places, the controls of the place, and the
-  two that belong to no place (pause, and the dumps). At four rows it took 200 px and left the
-  whole complex drawn 120 px across.
-- **only the places scroll sideways**, and they say so with a mask that fades the edge a tab is
+- **the places are along the very bottom of the window**, under the sheet, and everything above
+  them is lifted by their published height (`--places-height`, the same arithmetic as
+  `--sheet-height` one layer up). They are pressed more than anything else on a phone — a
+  machine drawn 300 px across is only legible one place at a time — and that edge is where a
+  thumb already is.
+- the desk above the sheet is **three rows, each of which fits**: what the place is and what it
+  is doing (nameplate, lamps, load meter), its keys, and the keys that belong to no place
+  (pause, and the dumps). At four rows the old bar took 200 px and left the whole complex drawn
+  120 px across.
+- **only the places scroll sideways**, and they say so with a mask that fades the edge a name is
   running under. Everything else wraps: a control you have to drag a strip to find is a control
-  that is not there. What makes wrapping affordable is that a bar changing height no longer
+  that is not there. What makes wrapping affordable is that a desk changing height no longer
   lands a camera in flight — see `Renderer.resize`, where a chrome change re-fits the flight's
   destination instead of cancelling it.
+- **the scope is not on a phone's desk** and the meter is, for the same reason it is on no desk
+  under 1360 px: the keys come first.
 - **every control says the same thing in fewer words** (`Controls.setCompact`): `⚡ fill`, not
   `⚡ fill SPS`; `→ beam 1`, not `→ LHC beam 1`. It is not abbreviation, it is the context
-  removed, because the tab above the button already carries it. The long labels are 440 px of
-  button in a row that has 374.
+  removed, because the nameplate beside the key already carries it. The long labels are 440 px
+  of button in a row that has 374.
 - **`CAMERA_MARGIN` is a ceiling, not a constant.** 80 px is a fourteenth of a desktop window
   and a fifth of a phone: at 390 px it took 160 of the 390 and drew the complex in 230. Below
   `MOBILE_WIDTH` the margin is 6 % of the window instead — but never less than `LABEL_ROOM`,
@@ -330,38 +340,74 @@ Two traps found writing those:
   records as a one-point arc. A filter that picked track batches by colour alone counted it and
   reported half a segment.
 
-## The button bar is a place and its controls
+## The desk, and the places that are not on it
 
 It used to be one flat row of thirteen buttons and a picker, ordered the way the machine is
 plumbed. That order is right for somebody who knows the cycle and useless to anybody who does
-not, because every control is equally loud and nothing says which machine it belongs to.
+not, because every control is equally loud and nothing says which machine it belongs to. So it
+became **a place, and the controls of that place** — the places being exactly the camera's
+views, one strip doing both jobs, because "which machine am I at" and "what am I looking at"
+are the same question and answering it twice is how a toy grows two navigations.
 
-So the bar is `pause` - **the places** - **what can be done at the place selected** - **the
-dumps**, and the places are exactly the camera's views: one bar doing both jobs, because "which
-machine am I at" and "what am I looking at" are the same question, and answering it twice is how
-a toy grows two navigations. What follows from that:
+That was right and it was built wrong: the places were the *first row of the bar* and the
+selected place's controls the second. One place has one key, the injector has four, an
+interaction point has a caption and three — so the box was a different width, and sometimes a
+different height, on every press, and **everything else in it moved when the place changed**,
+including the two dump keys. On a phone the same row of six places did not fit at all.
 
-- **Nothing is removed, only folded.** Every instructive mistake - injecting into a ramped
-  collider, arming a kicker with no beam - is two presses away instead of one, and no press is
-  refused that was not refused before.
-- **The dumps never fold.** They sit at the right-hand end whatever place is selected: dumping
-  the beam is the one action nobody should have to navigate to.
-- **A ramp is one button, not two.** It is a *setpoint* - the machine is either programmed for
-  flat top or for injection energy - so two buttons meant one of them was always the greyed
-  one, which is the definition of a control that should not be there. One button that says
-  which way it will go is never a no-op, and pressing it mid-ramp reverses it, which a real
-  machine also allows. `check:page` asserts no ramp is ever greyed.
-- **The backend picker left the bar** for the COMPUTE panel (`Readout.rowControl`). The bar is
-  for things done *to the machine*; which processor integrates the equations of motion is not
-  one of them, and it belongs beside the number it changes.
-- **The bar's height is load-bearing** and is held at a floor in the stylesheet. `main.ts`
-  measures it every frame and the camera is fitted inside it, so a bar that changed height as
-  the cluster changed would refit the machine on every tab press - and a refit lands a camera
-  that is still flying.
-- **A held control is on pointer events**, not mouse events: a finger produces `pointerdown`,
-  and the mouse events a touch browser synthesises arrive late, only for taps, and never for a
-  hold - which is the whole of what cogging is. The capture is taken so a finger sliding off
-  the button still delivers its release.
+Both are fixed by the same split:
+
+- **The places are their own strip.** Beside the title on a desktop — the same six names at the
+  same size for ever, above the picture rather than in the box that changes — and on a phone
+  **fixed to the very bottom of the window, under the sheet**, which is where a thumb is and
+  where the six of them do fit. One element (`#viewbar`), built by `ui/controls.ts`, placed by
+  the stylesheet. `check:page` asserts it is in the title, is not inside the desk, and does not
+  overlap it; on the phone it asserts the whole stack in order — places at the window's bottom
+  edge, sheet on top of them, desk on top of that, machine above all of it.
+- **The desk is fixed in every dimension.** `width: min(1180px, 100%)`, a floor on its height,
+  and four bays of fixed width: the nameplate and its lamps, the place's own keys, the
+  instruments, the keys that belong to no place. Only the middle bay changes, and it takes the
+  slack. `check:page` walks all six places at 1440 px and at 1101 px — one pixel above the phone
+  breakpoint, the narrowest desk this layout draws — and demands the desk, every bay, `pause`
+  and both dumps land on exactly the same pixels every time. Measured: **1180 × 58** with the
+  places **396 × 31** beside the title.
+
+What survives from before: nothing is removed, only folded, so every instructive mistake is two
+presses away instead of one; the dumps never fold; a ramp is one button, because it is a
+setpoint and two buttons meant one of them was always the greyed one; the backend picker is in
+the COMPUTE panel, because the desk is for things done *to the machine*; a held control is on
+pointer events, because a finger produces `pointerdown` and the synthesised mouse events never
+arrive for a hold.
+
+### Why it looks like a desk
+
+A machine you can quench should not be operated through something that reads like a toolbar.
+The keys are physical — bevel, engraved caption, and **a lamp on each that is dark exactly when
+pressing it would do nothing**, which is the greying rule made visible instead of merely
+tooltipped. Beside them are the three instruments the readouts cannot be glanced at for, and
+**every one of them is read off the world**; there is nothing on this desk that is decoration
+only:
+
+- **the lamps** — a batch each way round the collider, a ramp running on either machine,
+  collisions being collected, a quench. Read at 6 Hz, not per frame: counting what is in each
+  beam walks the particle array, and an instrument that answers "is there beam" six times a
+  second is telling the truth as fast as anybody can read it.
+- **the load meter** — mean dipole current against nominal, for **the machine this place
+  belongs to** (the injector's at `sps`, the collider's everywhere else), because a desk
+  labelled SPS metering the LHC is a desk that lies. A circuit switched off or quenched carries
+  none and drags the bar down, which is the thing worth seeing without opening POWER.
+- **the scope** (`ui/scope.ts`) — both machines as a fraction of **their own** flat top, over
+  the last 30 s of wall time, sampled four times a second and drawn only on the frames it
+  samples on. Fractions and not GeV, or the SPS would be a flat line one fifteenth of the way
+  up. It is the only thing on screen that shows a ramp as the twenty-minute shape it is, and
+  the only thing on the desk that keeps moving when nothing is being pressed — which is what
+  stops a control panel reading as a toolbar.
+
+**The scope is what gets sacrificed on a narrow desk.** Under 1360 px the busiest place's keys
+plus the nameplate plus the dumps already want the whole box, and a clipped key is a key that is
+not there, where a trace nobody can see costs nothing. The meter stays: it is 84 px and it is
+the one instrument that says a circuit has gone. Both halves of that are asserted, at 1440 and
+at 1101.
 
 ## What a control may be greyed out for
 

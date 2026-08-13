@@ -154,6 +154,11 @@ tracked in it.
   panel: a zoomed camera is fitted between the overlay's own columns and the experiments' cards
   take the readouts' column there. The overview, which is the view the layout was built for,
   keeps the full rule. See `rendering.md`.
+- **The console's scope comes off the desk under 1360 px, and off a phone's desk entirely.**
+  It is 120 px of trace beside keys that have nowhere else to go, and a key clipped by the bay
+  it stands in is a key that is not there. Both ends are asserted rather than assumed
+  (`check:page` at 1440 and at 1101). The load meter and the lamps stay at every size: they are
+  the two instruments that say a circuit has gone.
 - **The experiments' cards are hidden for the 0.75 s of a camera flight.** Coming out of a
   zoomed view the machine covers the whole window part-way through, and a card is a thing that
   stands beside the machine.

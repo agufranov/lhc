@@ -389,6 +389,147 @@ for (const [width, height] of sizes) {
   }
 }
 
+// --- the desk, walked place by place --------------------------------------------------------
+//
+// **The bug this measures shipped, and it was reported from a phone.** The places used to be
+// the first row of the button bar and the selected place's own controls the second, so the box
+// was a different size on every press and everything in it moved — including the two dump keys,
+// which are the ones that must never move. The places are their own strip now (in the title on
+// a desktop, along the foot of the window on a phone) and every bay of the desk is a fixed
+// width, and this is what says so: walk all six places and demand that the desk, the bays, and
+// the keys that belong to no place land on exactly the same pixels every time.
+//
+// Two window sizes, and both are edges: 1440 is the narrow end of the desk that still has the
+// scope on it (`style.css` takes the scope off under 1360, where there is no longer room for
+// the keys beside it), and 1101 is one pixel above the phone breakpoint — the narrowest desk
+// this layout ever draws, with the long labels still on the keys. No `collide()`: nothing here
+// needs beam, and what it would cost is a minute per place.
+for (const [width, height] of [[1440, 900], [1101, 860]] as Array<[number, number]>) {
+  console.log(`--- ${width}x${height} (the desk, at every place) ---`);
+  const session = await open(width, height);
+  try {
+    const shots: Array<{ view: string; boxes: Record<string, string>; clipped: string[] }> = [];
+    for (const view of ['complex', 'sps', 'ti', 'lhc', 'ip-a', 'ip-b']) {
+      await selectView(session.page, view);
+      shots.push({
+        view,
+        ...(await session.page.evaluate(() => {
+          const round = (r: DOMRect): string =>
+            `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`;
+          const boxes: Record<string, string> = {};
+          for (const sel of [
+            '#controls',
+            '#viewbar',
+            '.deck-plate',
+            '.deck-gauges',
+            '.deck-safety',
+            '[data-control="pause"]',
+            '[data-control="dump-1"]',
+            '[data-control="dump-2"]',
+          ]) {
+            const el = document.querySelector(sel);
+            boxes[sel] = el ? round(el.getBoundingClientRect()) : 'missing';
+          }
+          // A key hidden by the bay it is in is a key that is not there. The keys bay is the
+          // one that clips (`overflow: hidden`), because the alternative is a desk that grows
+          // a second row and refits the camera under it.
+          const clipped = Array.from(document.querySelectorAll('#controls button'))
+            .filter((el) => (el as HTMLElement).offsetParent !== null)
+            .filter((el) => {
+              const bay = el.closest('.deck-bay');
+              if (!bay) return false;
+              const k = el.getBoundingClientRect();
+              const b = bay.getBoundingClientRect();
+              return k.right > b.right + 0.5 || k.left < b.left - 0.5;
+            })
+            .map((el) => (el.textContent ?? '').trim());
+          return { boxes, clipped };
+        })),
+      });
+    }
+
+    const first = shots[0];
+    const moved = shots
+      .slice(1)
+      .flatMap((s) =>
+        Object.keys(first.boxes)
+          .filter((k) => s.boxes[k] !== first.boxes[k])
+          .map((k) => `${k} is ${s.boxes[k]} at ${s.view}, ${first.boxes[k]} at ${first.view}`),
+      );
+    console.log(`       desk ${first.boxes['#controls']}, places ${first.boxes['#viewbar']}`);
+    check(
+      'nothing on the desk moves when the place does',
+      moved.length === 0,
+      moved.slice(0, 3).join('; ') || `${Object.keys(first.boxes).length} boxes, six places, one set of pixels`,
+    );
+    const clipped = shots.filter((s) => s.clipped.length > 0);
+    check(
+      'no key is clipped by the bay it stands in',
+      clipped.length === 0,
+      clipped.map((s) => `${s.view}: ${s.clipped.join(', ')}`).join('; ') || 'every key whole',
+    );
+
+    // The places are **not** on the desk, and that is the whole point of the change: they are
+    // in the title block, which is above the picture rather than in the box that changes.
+    const strip = await session.page.evaluate(() => {
+      const bar = document.getElementById('viewbar');
+      const deck = document.getElementById('controls');
+      const title = document.querySelector('.title');
+      const b = bar?.getBoundingClientRect();
+      const d = deck?.getBoundingClientRect();
+      return {
+        onDesk: !!bar && !!deck && deck.contains(bar),
+        inTitle: !!bar && !!title && title.contains(bar),
+        overlapsDesk: !!b && !!d && b.bottom > d.top && b.top < d.bottom,
+        tabs: document.querySelectorAll('#viewbar .control--tab').length,
+      };
+    });
+    check(
+      'the places are a strip of their own, above the picture and off the desk',
+      !strip.onDesk && strip.inTitle && !strip.overlapsDesk && strip.tabs === 6,
+      `${strip.tabs} places, ${strip.inTitle ? 'in the title' : 'somewhere else'}`,
+    );
+
+    // The instruments. Every one of them is read off the world (`ui/controls.ts`), so what
+    // this asserts is that each is on screen and has been written to at least once — a lamp
+    // that never lights and a meter stuck at zero look exactly like decoration, which is the
+    // one thing nothing on this desk is allowed to be. The scope is the exception and is
+    // asserted *gone* on the narrow desk: it is what gets sacrificed for the keys, and a rule
+    // that is only written down in a comment is a rule that gets un-written.
+    const instruments = await session.page.evaluate(() => {
+      const scope = document.querySelector('.deck-scope') as HTMLCanvasElement | null;
+      let lit = 0;
+      if (scope) {
+        const ctx = scope.getContext('2d');
+        const px = ctx?.getImageData(0, 0, scope.width, scope.height).data;
+        if (px) for (let i = 3; i < px.length; i += 4) if (px[i] > 8) lit++;
+      }
+      const fill = document.querySelector('.meter-fill') as HTMLElement | null;
+      return {
+        lamps: document.querySelectorAll('.deck-lamps .lamp-bulb').length,
+        meter: fill ? fill.getBoundingClientRect().width : 0,
+        caption: document.querySelector('.meter-caption')?.textContent ?? '',
+        scope: scope ? scope.getBoundingClientRect().width : 0,
+        drawn: lit,
+      };
+    });
+    const wide = width > 1360;
+    check(
+      `the lamps and the meter are on the desk and reading the machine${wide ? ', and so is the scope' : ' — and the scope has stood down'}`,
+      instruments.lamps === 5 &&
+        instruments.meter > 0 &&
+        /\d/.test(instruments.caption) &&
+        (wide ? instruments.scope > 40 && instruments.drawn > 200 : instruments.scope === 0),
+      `${instruments.lamps} lamps, meter ${instruments.meter.toFixed(0)} px "${instruments.caption}", ` +
+        `scope ${instruments.scope.toFixed(0)} px with ${instruments.drawn} lit pixels`,
+    );
+
+    if (session.errors.length > 0) check('the page threw nothing', false, session.errors.join('; '));
+  } finally {
+    await session.close();
+  }
+}
+
 // --- the narrow layout, measured on a phone -------------------------------------------------
 //
 // A different shape rather than a squeezed desktop: the readouts are in a sheet along the
@@ -425,6 +566,7 @@ for (const [width, height] of sizes) {
       return {
         sheet: box('#sheet'),
         controls: box('#controls'),
+        places: box('#viewbar'),
         title: box('.title'),
         beam: box('#panel-beam'),
         eventA: box('#panel-ip-a'),
@@ -442,11 +584,12 @@ for (const [width, height] of sizes) {
             .filter((el) => (el as HTMLElement).offsetParent !== null)
             .map((el) => (el as HTMLElement).getBoundingClientRect().height),
         ),
-        // Every control that is on screen, and whether the window has cut it in half. The
-        // places are excluded: that strip scrolls on purpose and says so with a fade, and a
-        // tab half under the edge of a scroller is not a clipped control. Nothing else here
-        // may be reached by dragging.
-        clipped: Array.from(document.querySelectorAll('#controls button:not(.control--tab)'))
+        // Every control on the desk that is on screen, and whether the window has cut it in
+        // half. The places are not among them and cannot be: they are their own strip along
+        // the foot of the window, it scrolls on purpose and says so with a fade, and a name
+        // half under the edge of a scroller is not a clipped control. Nothing on the desk may
+        // be reached by dragging.
+        clipped: Array.from(document.querySelectorAll('#controls button'))
           .filter((el) => (el as HTMLElement).offsetParent !== null)
           .map((el) => {
             const r = el.getBoundingClientRect();
@@ -478,9 +621,27 @@ for (const [width, height] of sizes) {
       `machine ends at ${m.machineBottom.toFixed(0)} px, the sheet starts at ${m.sheet?.top.toFixed(0)}`,
     );
     check(
-      'the button bar stands on top of the sheet',
+      'the desk stands on top of the sheet',
       m.controls !== null && m.sheet !== null && m.controls.bottom <= m.sheet.top + 1 && m.controls.top > 0,
-      `bar ${m.controls?.top.toFixed(0)}..${m.controls?.bottom.toFixed(0)}, sheet from ${m.sheet?.top.toFixed(0)}`,
+      `desk ${m.controls?.top.toFixed(0)}..${m.controls?.bottom.toFixed(0)}, sheet from ${m.sheet?.top.toFixed(0)}`,
+    );
+    // **The whole stack, in order, from the bottom of the window up**: places, sheet, desk,
+    // machine. The places are along the very bottom because on a phone they are pressed more
+    // than anything else on screen and that is where a thumb is — and because everything above
+    // them is lifted by their height (`--places-height`), which is the sort of arithmetic that
+    // is right until the day it is not. It was wrong once already, one layer down: the sheet
+    // covered the button bar completely and the phone had no controls on it at all.
+    check(
+      'the places are along the very bottom of the window, under everything',
+      m.places !== null &&
+        m.sheet !== null &&
+        Math.abs(m.places.bottom - height) <= 1 &&
+        m.sheet.bottom <= m.places.top + 1 &&
+        m.places.width >= width - 1,
+      m.places
+        ? `places ${m.places.top.toFixed(0)}..${m.places.bottom.toFixed(0)} of ${height}, ` +
+          `${m.places.width.toFixed(0)} px wide, sheet ends at ${m.sheet?.bottom.toFixed(0)}`
+        : 'no places strip',
     );
     check('nothing runs off the side of the window', m.overflow <= 0, `${m.overflow} px over`);
     check(

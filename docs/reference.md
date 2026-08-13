@@ -68,8 +68,15 @@ labels drawn        LABEL_SPACING_MIN = 56 px between neighbours round a ring. O
        are drawn at every size
 narrow layout at 390x844   machine 294 px across (width-limited: a ring is square and a
        phone is tall, so the vertical slack is what lets the sheet open for almost nothing);
-       sheet folded to tabs + one peek line, 34 vh open; bar three rows, 119 px; readouts
-       366 px of the sheet's 366; event display 320 px, the biggest it is drawn anywhere
+       stacked up from the bottom edge: places strip 390x40, sheet on it (folded to its tabs
+       and one peek line, 34 vh open), the console on that at three rows and 110 px, the
+       machine above all of it; readouts 366 px of the sheet's 366; event display 320 px, the
+       biggest it is drawn anywhere. Smallest tap target 29 px, floor 28
+the console        1180x58 at every window that has room for it, 1069 at 1101 — and the same
+       pixels at all six places, which is the point of it: check:page walks the places and
+       compares the desk, every bay, pause and both dumps. The places are 396x31 beside the
+       title. The scope comes off the desk under 1360 px, where the busiest place's keys plus
+       the nameplate plus the dumps want the whole box; the load meter never does
 camera views at 1919x906 (magnification against the overview, which is 1.00x):
        SPS 3.64x, ATLAS/CMS 3.35x, TI 2/TI 8 1.31x, LHC 0.96x — the collider already fills
        the overview's height, so its own view is a pan and not a zoom. There is no view of

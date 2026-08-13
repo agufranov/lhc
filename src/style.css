@@ -522,75 +522,37 @@ body {
   margin-top: 6px;
 }
 
-/* The bar's height is load-bearing: `main.ts` measures it every frame and the camera is
-   fitted inside it, so a bar that grew or shrank as the cluster changed would refit the
-   machine on every tab press — and a refit lands a camera that is still flying. Every cluster
-   is one row of buttons the same height as the tabs beside them, and this holds the floor. */
-.controls {
-  min-height: 52px;
-  grid-row: 3;
-  pointer-events: auto;
-  justify-self: center;
-  align-self: end;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 14px;
-  backdrop-filter: blur(6px);
-}
+/* =======================================================================================
+   The console, and the strip of places above the picture.
 
-.control {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text);
-}
+   Two rules hold this together, and both are measured rather than asserted in prose:
 
-.control--button {
-  background: rgba(40, 70, 110, 0.35);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 6px 11px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
+   · **The desk never changes size.** Its height is load-bearing — `main.ts` measures it every
+     frame and the camera is fitted inside it — and a desk that grew or shrank as the place
+     changed would refit the machine on every press, landing a camera that is still flying.
+     Its *width* matters just as much for a different reason: everything on it used to move
+     sideways when the selected place had one more key than the last, including the two dump
+     keys. So the box is a fixed width and every bay in it is a fixed width, and what changes
+     when you change place is only which keys are in the middle bay.
 
-.control--button:hover {
-  background: rgba(60, 110, 170, 0.5);
-  border-color: rgba(120, 180, 240, 0.4);
-}
+   · **The places are not on the desk.** They are a camera selector, they are always the same
+     six, and they belong beside the name of the thing — which is where they are on a desktop.
+     On a phone they are fixed to the very bottom of the window, under the sheet, where a
+     thumb is. See `ui/controls.ts`.
+   ======================================================================================= */
 
-/* pressing it would do nothing at all — the button says why on hover, which is why it is
-   this and not `disabled`: a disabled button fires no mouse events and shows no tooltip */
-.control--blocked,
-.control--blocked:hover {
-  background: rgba(30, 40, 56, 0.5);
-  border-color: rgba(90, 110, 140, 0.25);
-  color: var(--muted);
-  cursor: not-allowed;
-}
-
-.control--slider,
-.control--select {
+/* The strip of places, in the title block. Navigation, not command: a strip of names rather
+   than a row of keys, which is what keeps it from reading as more console. */
+.places {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 6px;
-}
-
-/* The places, as one segmented control. It is navigation, not command: it reads as a strip
-   of names rather than a row of buttons, which is the whole reason the bar is legible now. */
-.control--tabs {
-  display: flex;
-  align-items: center;
+  align-self: center;
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: rgba(8, 14, 24, 0.5);
+  pointer-events: auto;
 }
 
 .control--tab {
@@ -619,8 +581,8 @@ body {
   border-color: rgba(120, 180, 240, 0.4);
 }
 
-/* Whether there is anything to look at over there. Never a reason to grey a tab out — see
-   `ui/controls.ts`. The dot keeps its space when it is not lit, or every tab would move
+/* Whether there is anything to look at over there. Never a reason to grey a place out — see
+   `ui/controls.ts`. The dot keeps its space when it is not lit, or every name would move
    sideways the moment a batch arrived somewhere. */
 .dot {
   width: 5px;
@@ -639,36 +601,293 @@ body {
   box-shadow: 0 0 6px rgba(255, 179, 92, 0.9);
 }
 
-/* One place's controls. Empty for the places that are only worth looking at, and an empty
-   cluster must not draw its own dividers. */
+/* --- the desk itself ------------------------------------------------------------------ */
+
+.controls {
+  grid-row: 3;
+  pointer-events: auto;
+  justify-self: center;
+  align-self: end;
+  /* Fixed, and wide enough for the busiest place. Nothing on this desk is allowed to move
+     when another place is selected, so the box may not shrink to its contents. */
+  width: min(1180px, 100%);
+  min-height: 58px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  /* Brushed metal under glass: a flat fill reads as a toolbar, and this is a desk. */
+  background:
+    linear-gradient(180deg, rgba(24, 34, 50, 0.92), rgba(9, 15, 25, 0.95)),
+    repeating-linear-gradient(90deg, rgba(190, 220, 255, 0.016) 0 2px, transparent 2px 5px);
+  border: 1px solid var(--border);
+  border-top-color: rgba(140, 190, 240, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(180, 215, 255, 0.09),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 4px 14px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+/* One bay of the desk, with an engraved seam between it and the next. */
+.deck-bay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  min-height: 38px;
+}
+
+.deck-bay + .deck-bay {
+  border-left: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: inset 1px 0 0 rgba(150, 195, 245, 0.07);
+}
+
+/* The nameplate: which place this desk is wired to, and its lamps. A fixed width, because
+   the names are `complex` and `TI 2 · TI 8` and everything to the right of it would move. */
+.deck-plate {
+  flex: none;
+  /* Wide enough for five lamps and their captions: they overflowed a 132 px plate and QNC —
+     the one that matters most — was the letter that went under the seam. `check:page` walks
+     the desk at the narrowest window that has one and would catch it again. */
+  width: 152px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+}
+
+.deck-name {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #cfe4fb;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.deck-lamps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lamp {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  color: rgba(140, 165, 195, 0.75);
+}
+
+/* Dark is a state, and the common one: an unlit bulb is a recess with nothing behind it. */
+.lamp-bulb {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(10, 16, 26, 0.9);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(120, 160, 210, 0.22);
+}
+
+.lamp-bulb.is-live {
+  background: #4ea8ff;
+  box-shadow: 0 0 6px rgba(78, 168, 255, 0.85), 0 0 0 1px rgba(120, 180, 240, 0.4);
+}
+
+.lamp-bulb.is-ok {
+  background: #57e39a;
+  box-shadow: 0 0 6px rgba(87, 227, 154, 0.85), 0 0 0 1px rgba(120, 240, 180, 0.4);
+}
+
+.lamp-bulb.is-hot {
+  background: var(--hot);
+  box-shadow: 0 0 7px rgba(255, 179, 92, 0.95), 0 0 0 1px rgba(255, 200, 130, 0.45);
+}
+
+.lamp-bulb.is-warn {
+  background: #ff5a48;
+  box-shadow: 0 0 8px rgba(255, 90, 72, 0.95), 0 0 0 1px rgba(255, 140, 120, 0.5);
+  animation: lamp-alarm 0.8s steps(2, end) infinite;
+}
+
+@keyframes lamp-alarm {
+  0% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
+/* The place's own keys. The one bay that changes, and the only one that may take the slack. */
+.deck-keys {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* --- the instruments ------------------------------------------------------------------ */
+
+.deck-gauges {
+  flex: none;
+  gap: 10px;
+}
+
+.deck-meter {
+  width: 84px;
+  flex: none;
+}
+
+.meter-track {
+  height: 7px;
+  border-radius: 2px;
+  background: rgba(6, 10, 18, 0.85);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(120, 160, 210, 0.18);
+  overflow: hidden;
+}
+
+/* Segments, not a smear: a bargraph on a desk is a column of lamps, and reading one is
+   counting how many are lit. Nominal current is the end of the track and there is nothing
+   above it, so a bar short of the end means a circuit is off, quenched, or still ramping. */
+.meter-fill {
+  height: 100%;
+  width: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 60%),
+    repeating-linear-gradient(90deg, #58c8f5 0 4px, rgba(6, 10, 18, 0.85) 4px 6px);
+  box-shadow: 0 0 6px rgba(88, 200, 245, 0.5);
+  transition: width 0.2s linear;
+}
+
+.meter-caption {
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The scope. Sized here and drawn in `ui/scope.ts`; the backing store follows this box. */
+.deck-scope {
+  display: block;
+  flex: none;
+  width: 120px;
+  height: 30px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(90, 200, 190, 0.22), inset 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* --- the keys ------------------------------------------------------------------------- */
+
+.control {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+/* A key, not a button: it stands proud of the desk, it goes down when it is pressed, and it
+   carries its own lamp — lit when pressing it would do something, dark when it would not. */
+.control--button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #dbe9fa;
+  background: linear-gradient(180deg, rgba(52, 72, 98, 0.95), rgba(22, 33, 50, 0.95));
+  border: 1px solid rgba(120, 160, 210, 0.22);
+  border-top-color: rgba(170, 210, 250, 0.35);
+  border-radius: 5px;
+  padding: 6px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(200, 228, 255, 0.16),
+    0 1px 0 rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.35);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.control--button:hover {
+  background: linear-gradient(180deg, rgba(72, 104, 144, 0.95), rgba(30, 46, 70, 0.95));
+  border-color: rgba(150, 200, 245, 0.4);
+}
+
+.control--button:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.65);
+}
+
+/* The greying rule, made visible: the lamp on a key that would do nothing is out. */
+.key-led {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: #7fd8ff;
+  box-shadow: 0 0 5px rgba(127, 216, 255, 0.8);
+}
+
+.control--dump .key-led {
+  background: #ff8a6a;
+  box-shadow: 0 0 5px rgba(255, 138, 106, 0.8);
+}
+
+/* pressing it would do nothing at all — the key says why on hover, which is why it is this
+   and not `disabled`: a disabled button fires no mouse events and shows no tooltip */
+.control--blocked,
+.control--blocked:hover {
+  background: linear-gradient(180deg, rgba(34, 44, 60, 0.8), rgba(18, 25, 38, 0.9));
+  border-color: rgba(90, 110, 140, 0.25);
+  border-top-color: rgba(110, 135, 170, 0.25);
+  color: var(--muted);
+  cursor: not-allowed;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.control--blocked .key-led {
+  background: rgba(10, 16, 26, 0.9);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(90, 110, 140, 0.3);
+}
+
+/* One place's keys. Empty for the places that are only worth looking at, and an empty
+   cluster must not draw its own separators. */
 .control--cluster:empty {
   display: none;
 }
 
 /* The one action that is never folded away, and is not a navigation away from wherever you
-   are. It says so by being the only warm thing in the bar. */
+   are. It says so by being the only warm thing on the desk. */
 .control--dump .control--button {
-  background: rgba(90, 40, 40, 0.4);
-  border-color: rgba(200, 110, 90, 0.3);
+  background: linear-gradient(180deg, rgba(112, 48, 44, 0.95), rgba(52, 22, 22, 0.95));
+  border-color: rgba(200, 110, 90, 0.32);
+  border-top-color: rgba(255, 150, 120, 0.4);
+  color: #ffd8cd;
 }
 
 .control--dump .control--button:hover {
-  background: rgba(140, 55, 50, 0.55);
+  background: linear-gradient(180deg, rgba(158, 62, 54, 0.95), rgba(74, 28, 26, 0.95));
   border-color: rgba(255, 140, 110, 0.5);
 }
 
-/* a captioned cluster, so five actions do not read as one row of five */
+/* a captioned group, so five actions do not read as one row of five */
 .control--group {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
 }
 
 .control .caption {
   color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .control .value {
@@ -690,6 +909,21 @@ select {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 6px;
+}
+
+/* **The scope is the first thing off a narrow desk.** Between the phone breakpoint and about
+   1360 px the keys of the busiest place plus the nameplate plus the dumps already want the
+   whole box, and a key that has been clipped is a key that is not there — where a trace
+   nobody can see costs nothing. The meter stays: it is 84 px and it is the one instrument
+   that says a circuit has gone. `check:page` measures both ends of this. */
+@media (max-width: 1360px) {
+  .deck-scope {
+    display: none;
+  }
+
+  .title .sub {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------------------
@@ -746,92 +980,146 @@ select {
     white-space: normal;
   }
 
-  /* **Three rows, each of which fits.** Everything in this layout is competing for the same
-     844 px and the bar is the part that grows — at four rows it took 200 px and left the whole
-     complex drawn 120 px across. So: the places, then what can be done at the one selected,
-     then the two controls that belong to no place at all. The first two scroll sideways rather
-     than wrapping; the last is pause and the dumps, which at 260 px always fit a phone.
-     Two rows was tried and does not: pause, a ramp, cogging and both dumps is 500 px of
-     button on a 390 px screen, and what overflowed was the dumps. */
-  .controls {
-    align-self: end;
-    justify-self: stretch;
-    width: 100%;
-    /* The sheet is fixed to the bottom of the window and the bar is in the overlay's grid, so
-       the bar has to be lifted clear of it by however tall it currently is. `main.ts`
-       publishes that. Without this the phone had no visible controls at all. */
-    margin-bottom: var(--sheet-height, 0px);
-    padding: 5px 6px;
-    gap: 5px;
-    border-radius: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
+  /* **The places go to the very bottom of the window**, under the sheet, and stay there
+     whatever is selected. On a phone that strip is the only way round a machine drawn 300 px
+     across, it is pressed more often than anything else on screen, and the bottom edge is
+     where a thumb already is. It is also the one strip here that scrolls, and it says so —
+     the mask fades the edge a name is running under, so a half-visible CMS reads as "there is
+     more" rather than as a cut-off control.
 
-  /* A label that wraps makes the whole bar a row taller. */
-  .controls button {
-    white-space: nowrap;
-  }
-
-  /* The captions name a cluster that is already the only one on screen. `dump` keeps its
-     one, because `beam 1` beside `beam 2` says nothing about what the button does to them. */
-  .control--cluster .caption {
-    display: none;
-  }
-
-  /* The places scroll sideways rather than wrapping: six of them at 390 px is a row and a
-     half, and a tab bar that reflows as the labels change length is a tab bar that moves
-     under the thumb. It is the one strip here that scrolls, and it says so — the mask fades
-     the edge a tab is running under, so a half-visible CMS reads as "there is more" rather
-     than as a cut-off button. */
-  .control--tabs {
-    order: 1;
-    flex: 1 1 100%;
+     Fixed, so it is not in the overlay's grid at all: `main.ts` measures it and publishes
+     `--places-height`, which is what the sheet stands on and what the camera is fitted above.
+     Everything in this layout is stacked, and each thing in the stack knows the height of
+     what is under it. */
+  .places {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    padding: 4px 6px;
+    gap: 2px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: rgba(6, 11, 20, 0.96);
+    backdrop-filter: blur(8px);
     overflow-x: auto;
     scrollbar-width: none;
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
   }
 
-  .control--tabs::-webkit-scrollbar {
+  .places::-webkit-scrollbar {
     display: none;
   }
 
   .control--tab {
     flex: none;
     /* A finger, not a pointer. */
-    padding: 7px 9px;
+    padding: 8px 8px;
+    font-size: 10.5px;
   }
 
-  .control--pause {
-    order: 3;
-  }
+  /* **Three rows, each of which fits**, and the desk is the same three whatever place is
+     selected: what the place is and what it is doing, its keys, and the keys that belong to
+     no place at all. Everything in this layout is competing for the same 844 px — at four
+     rows the bar took 200 px and left the whole complex drawn 120 px across — and the row
+     that used to be here and is not any more is the places, which are along the bottom of the
+     window now.
 
-  /* **Wraps, never scrolls.** A control you have to drag a strip sideways to find is a
-     control that is not there, and the injector's four are 440 px of button in a row that has
+     The keys wrap and never scroll. A control you have to drag a strip sideways to find is a
+     control that is not there, and the injector's four are 440 px of key in a row that has
      374 of them even after `setCompact` has shortened every label. So they take a second line
-     when they need one — which the camera survives, because a bar that changes height no
+     when they need one — which the camera survives, because a desk that changes height no
      longer lands a flight (`Renderer.resize`). */
-  .control--cluster {
+  .controls {
+    align-self: end;
+    justify-self: stretch;
+    width: 100%;
+    min-height: 0;
+    /* The sheet and the places strip are both fixed to the bottom of the window and the desk
+       is in the overlay's grid, so it has to be lifted clear of however tall the two of them
+       currently are. `main.ts` publishes both. Without this the phone had no visible controls
+       at all. */
+    margin-bottom: calc(var(--sheet-height, 0px) + var(--places-height, 0px));
+    padding: 6px;
+    gap: 6px;
+    border-radius: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  /* A label that wraps makes the whole desk a row taller. */
+  .controls button {
+    white-space: nowrap;
+  }
+
+  /* The bays stop being bays: there is no room to stand four of them side by side, so they
+     are three rows with nothing ruled between them. */
+  .deck-bay {
+    padding: 0;
+    min-height: 0;
+  }
+
+  .deck-bay + .deck-bay {
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  /* Row one: what this place is, what it is doing, and how hard its dipoles are working. */
+  .deck-plate {
+    order: 1;
+    flex: 0 1 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 9px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .deck-gauges {
+    order: 1;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .deck-meter {
+    width: 76px;
+  }
+
+  .deck-keys {
     order: 2;
     flex: 1 1 100%;
     min-width: 0;
+    overflow: visible;
+  }
+
+  .deck-safety {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
+  /* The captions name a cluster that is already the only one on screen. `dump` keeps its
+     one, because `beam 1` beside `beam 2` says nothing about what the key does to them. */
+  .control--cluster .caption {
+    display: none;
+  }
+
+  .control--cluster {
+    flex: 1 1 100%;
+    min-width: 0;
     flex-wrap: wrap;
-    border: 0;
-    padding: 0;
     gap: 5px;
   }
 
   .control--dump {
-    order: 4;
-    flex: none;
-    border: 0;
-    padding: 0;
+    margin-left: auto;
     gap: 5px;
   }
 
   .control--button {
-    padding: 7px 9px;
+    padding: 8px 9px;
   }
 
   /* The two experiments' cards are not placed beside the machine here — there is no beside.
@@ -865,7 +1153,9 @@ select {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    /* On top of the places strip, which is fixed to the very bottom of the window and is the
+       one thing under everything else in this layout. `main.ts` publishes its height. */
+    bottom: var(--places-height, 0px);
     z-index: 3;
     pointer-events: auto;
     display: flex;

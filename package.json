@@ -12,6 +12,7 @@
     "check": "esbuild scripts/check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/check.mjs && node node_modules/.cache/check.mjs",
     "check:render": "esbuild scripts/render-check.ts --bundle --format=esm --platform=node --outfile=node_modules/.cache/render-check.mjs && node node_modules/.cache/render-check.mjs",
     "shot": "esbuild scripts/browser/shot.ts --bundle --format=esm --platform=node --packages=external --outfile=node_modules/.cache/shot.mjs && node node_modules/.cache/shot.mjs",
+    "probe": "esbuild scripts/browser/probe.ts --bundle --format=esm --platform=node --packages=external --outfile=node_modules/.cache/probe.mjs && node node_modules/.cache/probe.mjs",
     "check:page": "esbuild scripts/browser/page-check.ts --bundle --format=esm --platform=node --packages=external --outfile=node_modules/.cache/page-check.mjs && node node_modules/.cache/page-check.mjs"
   },
   "devDependencies": {

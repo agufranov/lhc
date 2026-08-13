@@ -257,6 +257,29 @@ None of these threw. All of them looked like broken physics.
   needed: controls carry a `data-control` key that does not change with their wording, and the
   driver's `mustPress` throws rather than returning `false` into nobody's hands. **A driver
   that can fail silently is worse than no driver**, because its output looks like a pass.
+- **A strip of tabs cannot share a box with a cluster that changes size.** The camera's places
+  were the first row of the button bar and the selected place's controls the second — one key at
+  `complex`, four at the injector, a caption and three at an interaction point — so the box was
+  a different width on every press and *everything else in it moved*, including the two dump
+  keys, which are the ones that must never move. It was reported from a phone, where the same
+  six places also did not fit. Navigation and command want different boxes: the places are their
+  own strip now (in the title, or along the foot of a phone) and every bay of the desk is a
+  fixed width, which `check:page` walks all six places to assert.
+- **A constant declared in a browser gate does not exist inside the page.** `page.evaluate`
+  ships the *function* to Chrome, not the module around it, so a selector hoisted into a
+  `const` and then used in the callback is a `ReferenceError` at run time — and the gate died
+  before its first assertion rather than failing one. Anything a callback needs is either
+  written out inside it or passed as an argument.
+- **`check:page` fails like a physics bug when the machine it runs on is busy.** The gate drives
+  the real app and waits on what the panels *say*, with wall-clock deadlines; the app integrates
+  on `dtWall` capped at 0.1 s, so below about ten frames a second the machine clock stops being
+  200x and every `until` in `collide()` starts timing out. What that prints is `the collider
+  never filled` and `0 of 2 experiments` — which reads as a broken injection and is a busy
+  laptop. Measured on this machine: 126 fps idle, 21 fps with a few other Chrome windows and an
+  editor open, and a **full disk** (which is worth checking first) is worse than either. The
+  same run passed four times over once the machine was quiet. Before believing a failure here,
+  re-run it on an idle machine — and note that the failures move between window sizes from run
+  to run, which no layout bug does.
 - **A setpoint cannot be told twice.** With the ramps as one button, the old `press('SPS flat
   bottom')` became "press the ramp", which sends a machine already at flat bottom *up*. Driving
   a toggle means reading the state first — `setRamp` does, off `targetEnergy`.

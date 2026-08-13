@@ -28,6 +28,8 @@ const hud = new Hud(world, {
 /** The overlay's own furniture, and the two cards whose visibility moves the right rail. */
 const overlayRoot = document.querySelector('.overlay') as HTMLElement;
 const titleRoot = document.querySelector('.title') as HTMLElement;
+/** The places strip: in the title on a desktop, fixed to the foot of the window on a phone. */
+const viewbarRoot = document.getElementById('viewbar')!;
 const cardA = document.getElementById('panel-ip-a')!;
 const cardB = document.getElementById('panel-ip-b')!;
 
@@ -66,7 +68,22 @@ function fitOverlay(): void {
  * how "no panel is drawn over the machine" survives a 390 px screen.
  */
 function overlayChrome(): { title: number; controls: number } {
-  return { title: titleRoot.offsetHeight, controls: controlsRoot.offsetHeight + sheet.height };
+  return {
+    title: titleRoot.offsetHeight,
+    controls: controlsRoot.offsetHeight + sheet.height + placesHeight(),
+  };
+}
+
+/**
+ * How much of the bottom of the window the places strip is standing over [CSS px].
+ *
+ * Zero on a desktop, where it is inside the title block and already counted in the number
+ * above it. On a phone it is fixed to the very bottom of the window under the sheet, so it is
+ * one more thing the machine has to be fitted above — and one more thing the sheet has to be
+ * lifted clear of, which is what `--places-height` is for.
+ */
+function placesHeight(): number {
+  return narrow.matches ? viewbarRoot.offsetHeight : 0;
 }
 
 /**
@@ -107,7 +124,7 @@ let lastFrame = performance.now();
 let fps = 60;
 
 const controlsRoot = document.getElementById('controls')!;
-const controls = new Controls(controlsRoot, world, {
+const controls = new Controls(controlsRoot, viewbarRoot, world, {
   onTogglePause() {
     paused = !paused;
     controls.setPaused(paused);
@@ -198,6 +215,9 @@ function frame(now: number): void {
   // The bar stands on top of the sheet. Published rather than assumed, because the sheet is
   // as tall as its contents up to a cap and the reader can fold it away.
   document.documentElement.style.setProperty('--sheet-height', `${sheet.height}px`);
+  // And the sheet stands on top of the places strip, for the same reason: on a phone that
+  // strip is fixed to the foot of the window, so everything above it is lifted by its height.
+  document.documentElement.style.setProperty('--places-height', `${placesHeight()}px`);
 
   let steps = 0;
   const t0 = performance.now();
@@ -215,7 +235,7 @@ function frame(now: number): void {
   hud.update(world, { fps, stepsThisFrame: steps, frameMs: performance.now() - t0 });
   // Which controls would currently do nothing — cogging with only one beam on the orbit —
   // and which places have something happening in them. The kickers are never among them.
-  controls.update(world, renderer.view);
+  controls.update(world, renderer.view, dtWall);
   requestAnimationFrame(frame);
 }
 

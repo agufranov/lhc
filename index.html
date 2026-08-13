@@ -12,6 +12,14 @@
     <div class="overlay">
       <header class="title">
         <h1>LHC</h1>
+        <!-- The places the camera can be, and the one navigation this toy has. It is *here*
+             and not in the console below, because where it used to be it was a row of tabs in
+             the same box as the controls of whatever place was selected — so every press
+             resized the box and moved every other control in it. A camera selector belongs
+             beside the name of the thing, at a size that never changes. On a phone the same
+             element is fixed to the very bottom of the window, under the sheet, where a thumb
+             is; `ui/controls.ts` builds it and the stylesheet decides which of the two it is. -->
+        <nav class="places" id="viewbar" role="tablist"></nav>
         <span class="sub">two beams · filled from the SPS · collided at P3 and P7</span>
         <!-- The machine's own voice: the last thing that happened, loudest first. It is
              inside the title block on purpose — the camera is fitted against the *measured*
@@ -53,7 +61,11 @@
       <section class="panel panel--event" id="panel-ip-a" hidden></section>
       <section class="panel panel--event" id="panel-ip-b" hidden></section>
 
-      <footer class="controls" id="controls"></footer>
+      <!-- The console: the nameplate of the place you are at, its lamps, its controls, its
+           gauges, and the two keys that are never folded away. Its box and every section in
+           it is a fixed size, so changing place changes what is *on* the desk and never where
+           anything sits — see `ui/controls.ts`. -->
+      <footer class="controls deck" id="controls"></footer>
 
       <!-- The bottom sheet: where the machine readouts go on a window too narrow to stand
            them beside the machine. It holds the *same* panel elements — `ui/sheet.ts` moves

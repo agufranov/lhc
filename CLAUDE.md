@@ -98,6 +98,7 @@ npm run check        # headless: lattice, tracking, extraction, dumps, powering,
 npm run check:render # headless renderer smoke test against a recording mock canvas
 npm run check:page   # the overlay measured in real headless Chrome: what covers what
 npm run shot -- 1919 906 out.png   # a screenshot of the running toy, headless
+npm run probe -- 390 844 scratch/phone   # one screenshot per place, for looking at
 ```
 
 `npm run build` runs the typecheck then `vite build`.
@@ -115,6 +116,10 @@ npm run shot -- 1919 906 out.png   # a screenshot of the running toy, headless
   `npm start` then fails with `Port 5173 is already in use`. Vite resolves modules from
   disk on every request, so an older server still serves current code — check with
   `Invoke-WebRequest` for a known new symbol rather than restarting blindly.
+- **The browser gates need an idle machine and a disk with room on it.** `check:page` waits on
+  wall-clock deadlines while the app integrates on frame time, so a laptop under load drops the
+  machine clock below 200x and the gate reports a collider that never filled. See
+  `docs/lessons.md`.
 - **Check whose server it is.** The port may be held by a *different project* — this machine
   has had two others on 5173 and 5174 — and the browser gates and `npm run shot` use whatever
   is listening, so they will happily measure and photograph somebody else's application.
@@ -136,6 +141,12 @@ and the picture is fitted above it — the same elements moved, not a second set
 in `rendering.md` about panels and the machine still holds there, because the machine is fitted
 into what the panels left; what changes is that the camera's places stop being a convenience and
 become the only way to see anything. `check:page` measures both layouts.
+
+The bottom of the window is a **stack**, and each layer is lifted by the measured height of the
+one below it: the places strip along the very bottom (`--places-height`), the sheet on it
+(`--sheet-height`), the console on that, and the machine fitted above the lot. The two custom
+properties are published by `main.ts` every frame; a layer that assumes a height instead of
+reading one is how the first phone screenshot came back with no controls on it at all.
 
 ## Seeing the page
 
@@ -198,12 +209,16 @@ src/render/
   renderer.ts    all drawing of the machine, plus pickMagnet hit testing
   eventDisplay.ts  the r-phi event display, into an experiment's own canvas
   spectrum.ts    a mass spectrum, into the run panel's canvas
-src/ui/          hud.ts, controls.ts, eventPanel.ts, readout.ts, format.ts
+src/ui/          hud.ts, eventPanel.ts, readout.ts, format.ts
+  controls.ts    the console: the place's nameplate and lamps, its keys, the instruments,
+                 the dumps — plus the strip of places, which is deliberately not on it
+  scope.ts       the console's oscilloscope: both machines' energies over the last 30 s
   layout.ts      where every overlay box goes, worked out against the camera
   sheet.ts       the narrow layout: the readouts folded into a sheet along the bottom
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
-  browser/       page.ts, shot.ts, page-check.ts — headless Chrome (node types live here
-                 only; see tsconfig.browser.json)
+  browser/       page.ts, shot.ts, page-check.ts, probe.ts (a screenshot of every place, for
+                 looking at) — headless Chrome (node types live here only; see
+                 tsconfig.browser.json)
 docs/            the pages in the table above
 .github/workflows/pages.yml   the three gates, then build and publish to GitHub Pages
 ```
@@ -240,6 +255,9 @@ argued in the page named beside it.
   would do something instructive and bad, which is why no kicker is ever greyed, no ramp is
   (one button, two directions) and no view is. Nothing is *removed* either, only folded into
   the place it belongs to, one press away. → `rendering.md`
+- **The console never changes size, and the places are not on it.** Every bay of the desk is a
+  fixed width and the camera's places are their own strip, because a box that resizes when the
+  place changes moves every control in it — including the dumps. → `rendering.md`
 - **Anything the user can see is asserted** — in `check:render` if it is drawn, in
   `check:page` if it is placed. → this page, above.
 - **The camera has named places and moves between them smoothly**, and moving it changes

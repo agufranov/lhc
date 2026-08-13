@@ -109,9 +109,9 @@ export async function open(width: number, height: number, quiet = true): Promise
 }
 
 /**
- * Clicks a control by a fragment of its visible label.
+ * Clicks a control by the key it was built with.
  *
- * **Visible, and it matters.** The bar shows one place's controls at a time, and the ones
+ * **Visible, and it matters.** The desk shows one place's controls at a time, and the ones
  * belonging to the other places are in the DOM with `hidden` on them — where `click()` would
  * still fire their handlers, which is a press no user could make. It also disambiguates: the
  * injector's ramp reads `▲ ramp → 450 GeV` and the collider's reads `▼ ramp → 450 GeV`, and
@@ -171,7 +171,9 @@ export async function setRamp(page: Page, machine: 'injector' | 'collider', up: 
  */
 export async function selectView(page: Page, id: string): Promise<boolean> {
   const hit = await page.evaluate((view: string) => {
-    const found = document.querySelector(`#controls .control--tab[data-view="${view}"]`);
+    // In the title on a desktop and fixed to the foot of the window on a phone — one element
+    // either way, and never on the desk itself. See `ui/controls.ts`.
+    const found = document.querySelector(`#viewbar .control--tab[data-view="${view}"]`);
     if (!found) return false;
     (found as HTMLButtonElement).click();
     return true;
@@ -189,7 +191,7 @@ export async function flying(page: Page): Promise<boolean> {
 }
 
 /**
- * Every button in the bar and whether it is greyed out.
+ * Every control on the desk and in the places strip, and whether it is greyed out.
  *
  * A greyed control is `aria-disabled` rather than `disabled` — it keeps its tooltip, which is
  * where the reason is — so this reads the attribute the app actually sets. See
@@ -198,8 +200,10 @@ export async function flying(page: Page): Promise<boolean> {
 export async function controlStates(
   page: Page,
 ): Promise<Array<{ label: string; blocked: boolean; shown: boolean; tab: boolean }>> {
+  // Both, and written out: the callback is evaluated **in the page**, where nothing this
+  // module has declared exists. A constant closed over here is a `ReferenceError` in Chrome.
   return page.evaluate(() =>
-    Array.from(document.querySelectorAll('#controls button')).map((b) => ({
+    Array.from(document.querySelectorAll('#controls button, #viewbar button')).map((b) => ({
       label: (b.textContent ?? '').trim(),
       blocked: b.getAttribute('aria-disabled') === 'true',
       shown: (b as HTMLElement).offsetParent !== null,

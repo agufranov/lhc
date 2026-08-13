@@ -1,6 +1,7 @@
 import type { World } from '../sim/world';
 import type { View, ViewId } from '../render/views';
 import { listViews, viewActivity } from '../render/views';
+import { Scope } from './scope';
 
 export interface ControlHandlers {
   onTogglePause(): void;
@@ -18,7 +19,7 @@ export interface ControlHandlers {
 }
 
 /**
- * The button bar: where you are, and what can be done from there.
+ * The console, and the strip of places that says which machine it is wired to.
  *
  * ## Why it is not one row of everything
  *
@@ -29,23 +30,52 @@ export interface ControlHandlers {
  * which machine. The audience for this is somewhere between an accelerator engineer and
  * somebody who clicked a link.
  *
- * So the bar is **a place and its controls**. The tabs are the places the camera can be —
- * they are exactly `views.ts`, one bar doing both jobs, because "which machine am I at" and
- * "what am I looking at" are the same question and answering it twice is how a toy grows two
- * navigations. Picking one flies the camera there and swaps the cluster underneath it.
+ * So there is **a place, and a desk for it**. The places are exactly `views.ts`, one strip
+ * doing both jobs, because "which machine am I at" and "what am I looking at" are the same
+ * question and answering it twice is how a toy grows two navigations. Picking one flies the
+ * camera there and swaps what is on the desk.
  *
  * Three things this has to get right, and they are all consequences of the greying rule in
  * `docs/rendering.md` — *a control is greyed only when pressing it would do nothing at all*:
  *
- * - **No tab is ever greyed.** Looking at an empty SPS is a thing somebody may want to do,
+ * - **No place is ever greyed.** Looking at an empty SPS is a thing somebody may want to do,
  *   and a camera position cannot be a no-op. What the empty ones get instead is a mark
  *   saying whether there is anything over there — see `viewActivity`.
  * - **Nothing is removed, only folded**, and one press unfolds it. The instructive mistakes
  *   — injecting into a ramped collider, arming a kicker with no beam — are two presses away
  *   rather than one, and no press is refused that was not refused before.
  * - **The dumps are outside the folding entirely.** Dumping the beam is the one action an
- *   operator must never have to navigate to, so it sits at the right-hand end of the bar
+ *   operator must never have to navigate to, so it sits at the right-hand end of the desk
  *   whatever place is selected.
+ *
+ * ## Why the places left the desk
+ *
+ * They were the first row of it, and everything else in the box was the selected place's own
+ * controls — one key at `complex`, four at the injector, a caption and three at an interaction
+ * point. So the box was a different width, and sometimes a different height, on every press,
+ * and **every other control in it moved when you changed place**, including the dumps, which
+ * are the two that must never move. A strip of tabs cannot share a box with something that
+ * changes size.
+ *
+ * They are now beside the title (`index.html`), where they are the same six at the same size
+ * for ever, and on a phone they are fixed to the very bottom of the window under the sheet,
+ * which is where a thumb is and where the six of them fit. What is left is a desk that is
+ * **fixed in every dimension**: the whole box, and each of its four bays — nameplate and
+ * lamps, the place's own keys, the instruments, and the keys that are never folded away.
+ * Changing place changes what is on the desk and never where anything is on it, which
+ * `check:page` measures by walking every place and comparing the boxes.
+ *
+ * ## Why it looks like a desk
+ *
+ * Because a machine you can quench should not be operated through something that reads like a
+ * toolbar. The keys are physical — bevel, engraved caption, and a lamp in the corner of each
+ * that is dark exactly when pressing it would do nothing, which is the greying rule made
+ * visible instead of merely tooltipped. Beside them are the three instruments the readouts
+ * cannot be glanced at for: the **lamps** (a beam each way round the collider, a ramp running,
+ * collisions, a quench), a **load meter** on the dipoles of whichever machine this place
+ * belongs to, and the **scope**, which is the only thing on screen that shows a ramp as the
+ * twenty-minute shape it is (`ui/scope.ts`). Every one of them is read off the world; there is
+ * nothing on this desk that is decoration only.
  *
  * ## Why the ramps became one button each
  *
@@ -57,7 +87,7 @@ export interface ControlHandlers {
  * lets you do.
  */
 export class Controls {
-  private pauseBtn: HTMLButtonElement;
+  private pause: Key;
   private paused = false;
   private blocks: Block[] = [];
   private tabs: Tab[] = [];
@@ -65,37 +95,44 @@ export class Controls {
   private toggles: Toggle[] = [];
   private shown: ViewId | null = null;
   /** Every control that says something shorter on a narrow screen. */
-  private labels: Array<{ el: HTMLButtonElement; long: string; short: string }> = [];
+  private labels: Array<{ el: HTMLElement; long: string; short: string }> = [];
   private compact = false;
+  /** The nameplate, the lamps beside it, and the dipole load meter. */
+  private plate: HTMLElement;
+  private plateName = '';
+  private lamps: LampView[] = [];
+  private meter: Meter;
+  private scope: Scope;
+  /** The instruments are read at {@link INSTRUMENT_PERIOD}, not at sixty frames a second. */
+  private since = 0;
 
-  constructor(root: HTMLElement, world: World, handlers: ControlHandlers) {
+  constructor(root: HTMLElement, places: HTMLElement, world: World, handlers: ControlHandlers) {
     root.innerHTML = '';
+    places.innerHTML = '';
     const collider = world.collider.ring.config;
     const injector = world.injector.ring.config;
 
-    this.pauseBtn = button(
-      root,
-      '⏸ pause',
-      handlers.onTogglePause,
-      'Stops the clock. Space does the same.',
-      'pause',
-    );
-    this.pauseBtn.classList.add('control--pause');
-
     // --- the places -----------------------------------------------------------
-    const tabs = document.createElement('div');
-    tabs.className = 'control control--tabs';
-    tabs.setAttribute('role', 'tablist');
     for (const view of listViews(world)) {
-      this.tabs.push(tab(tabs, view, () => handlers.onView(view.id)));
+      this.tabs.push(tab(places, view, () => handlers.onView(view.id)));
     }
-    root.append(tabs);
 
-    // --- what can be done at each of them -------------------------------------
+    // --- the nameplate, and what the machine is doing without being asked ------
+    const plate = bay(root, 'deck-plate');
+    this.plate = document.createElement('div');
+    this.plate.className = 'deck-name';
+    plate.append(this.plate);
+    const lamps = document.createElement('div');
+    lamps.className = 'deck-lamps';
+    for (const spec of LAMPS) this.lamps.push(lamp(lamps, spec));
+    plate.append(lamps);
+
+    // --- what can be done at each place ---------------------------------------
     //
     // A control may appear under more than one place, and two do: filling is how a session
     // starts, so it is on the overview as well as on the injector, and the extraction kickers
     // belong both to the machine they fire in and to the line they fire down.
+    const keys = bay(root, 'deck-keys');
     const fill: Item = [
       `⚡ fill ${injector.name}`,
       '⚡ fill',
@@ -125,9 +162,9 @@ export class Controls {
       'to-beam-2',
     ];
 
-    this.cluster(root, 'complex', [fill]);
+    this.cluster(keys, 'complex', [fill]);
 
-    const injectorCluster = this.cluster(root, 'sps', [fill, toBeam1, toBeam2]);
+    const injectorCluster = this.cluster(keys, 'sps', [fill, toBeam1, toBeam2]);
     this.ramp(
       injectorCluster,
       world,
@@ -142,9 +179,9 @@ export class Controls {
       'ramp-injector',
     );
 
-    this.cluster(root, 'ti', [toBeam1, toBeam2]);
+    this.cluster(keys, 'ti', [toBeam1, toBeam2]);
 
-    const colliderCluster = this.cluster(root, 'lhc', []);
+    const colliderCluster = this.cluster(keys, 'lhc', []);
     this.ramp(
       colliderCluster,
       world,
@@ -166,48 +203,69 @@ export class Controls {
     // is what turns a filled machine into a running one, and it is the only control in this
     // toy whose effect is *at* an interaction point rather than at a machine.
     for (const id of ['ip-a', 'ip-b'] as const) {
-      this.cogging(this.cluster(root, id, []), handlers);
+      this.cogging(this.cluster(keys, id, []), handlers);
     }
 
+    // --- the instruments -------------------------------------------------------
+    const gauges = bay(root, 'deck-gauges');
+    this.meter = meter(gauges);
+    const screen = document.createElement('canvas');
+    screen.className = 'deck-scope';
+    screen.title =
+      'Both machines, as a fraction of their own flat top, over the last thirty seconds of ' +
+      'watching. The sawtooth is the injector cycling; the long climb is the collider ramp.';
+    gauges.append(screen);
+    this.scope = new Scope(screen);
+
     // --- always reachable ------------------------------------------------------
+    const safety = bay(root, 'deck-safety');
+    this.pause = key(
+      safety,
+      '⏸ pause',
+      handlers.onTogglePause,
+      'Stops the clock. Space does the same.',
+      'pause',
+    );
+    this.labels.push({ el: this.pause.label, long: '⏸ pause', short: '⏸' });
     const dump = document.createElement('div');
     dump.className = 'control control--group control--dump';
     const cap = document.createElement('span');
     cap.className = 'caption';
     cap.textContent = 'dump';
     dump.append(cap);
-    const dump1 = button(
+    const dump1 = key(
       dump,
       '⏻ beam 1',
       () => handlers.onExtract('td1'),
       'Fires the beam 1 dump kickers at Point 5.',
       'dump-1',
     );
-    const dump2 = button(
+    const dump2 = key(
       dump,
       '⏻ beam 2',
       () => handlers.onExtract('td2'),
       'Fires the beam 2 dump kickers, the other way out of the same straight.',
       'dump-2',
     );
-    this.labels.push({ el: dump1, long: '⏻ beam 1', short: '⏻ 1' });
-    this.labels.push({ el: dump2, long: '⏻ beam 2', short: '⏻ 2' });
-    root.append(dump);
+    this.labels.push({ el: dump1.label, long: '⏻ beam 1', short: '⏻ 1' });
+    this.labels.push({ el: dump2.label, long: '⏻ beam 2', short: '⏻ 2' });
+    safety.append(dump);
 
-    this.update(world, 'complex');
+    this.update(world, 'complex', 0);
   }
 
   setPaused(paused: boolean): void {
     this.paused = paused;
-    this.pauseBtn.textContent = paused
-      ? this.compact ? '▶' : '▶ run'
-      : this.compact ? '⏸' : '⏸ pause';
+    const entry = this.labels.find((l) => l.el === this.pause.label)!;
+    entry.long = paused ? '▶ run' : '⏸ pause';
+    entry.short = paused ? '▶' : '⏸';
+    this.pause.label.textContent = this.compact ? entry.short : entry.long;
   }
 
   /**
    * Narrow screen: every control says the same thing in fewer words.
    *
-   * Called with the same media query the sheet and the stylesheet use, so the bar is never
+   * Called with the same media query the sheet and the stylesheet use, so the desk is never
    * half in one mode and half in the other.
    */
   setCompact(compact: boolean): void {
@@ -215,7 +273,7 @@ export class Controls {
     this.compact = compact;
     for (const l of this.labels) l.el.textContent = compact ? l.short : l.long;
     for (const t of this.toggles) {
-      t.el.textContent = t.up
+      t.label.textContent = t.up
         ? compact ? t.upShort : t.upLabel
         : compact ? t.downShort : t.downLabel;
     }
@@ -224,12 +282,15 @@ export class Controls {
 
   /**
    * Greys out whatever would currently do nothing, marks the places where something is
-   * happening, and shows the cluster belonging to `view`.
+   * happening, shows the keys belonging to `view`, and reads the instruments.
    *
    * Called every frame, and cheap: every write is guarded by a comparison, so a frame in
-   * which nothing changed touches no DOM at all.
+   * which nothing changed touches no DOM at all. The lamps and the meter are read at
+   * {@link INSTRUMENT_PERIOD} rather than per frame, because counting what is in each beam
+   * walks the whole particle array — an instrument that answers "is there beam" six times a
+   * second is telling the truth as fast as anybody can read it.
    */
-  update(world: World, view: ViewId): void {
+  update(world: World, view: ViewId, dtWall: number): void {
     if (view !== this.shown) {
       this.shown = view;
       for (const [id, el] of this.clusters) el.hidden = id !== view;
@@ -237,6 +298,11 @@ export class Controls {
         const current = t.id === view;
         t.el.classList.toggle('is-current', current);
         t.el.setAttribute('aria-selected', current ? 'true' : 'false');
+      }
+      const name = this.tabs.find((t) => t.id === view)?.name ?? '';
+      if (name !== this.plateName) {
+        this.plateName = name;
+        this.plate.textContent = name;
       }
     }
 
@@ -253,7 +319,7 @@ export class Controls {
       const up = !programmedFor(t.target(world), t.topGeV);
       if (up !== t.up) {
         t.up = up;
-        t.el.textContent = up
+        t.label.textContent = up
           ? this.compact ? t.upShort : t.upLabel
           : this.compact ? t.downShort : t.downLabel;
         t.el.title = up ? t.upTitle : t.downTitle;
@@ -273,17 +339,53 @@ export class Controls {
         b.el.title = b.title;
       }
     }
+
+    this.scope.update(world, dtWall);
+    this.since += dtWall;
+    if (this.since < INSTRUMENT_PERIOD) return;
+    this.since = 0;
+    this.instruments(world, view);
   }
 
-  /** One place's controls. Hidden rather than destroyed: they are built once. */
+  /**
+   * The lamps and the load meter.
+   *
+   * The meter is the dipoles of **the machine this place belongs to** — at the injector it is
+   * the injector's, everywhere else the collider's — because a desk labelled SPS metering the
+   * LHC is a desk that lies. It reads mean circuit current against nominal, so a circuit
+   * switched off or quenched drags it down, which is exactly the thing worth seeing happen
+   * without opening POWER.
+   */
+  private instruments(world: World, view: ViewId): void {
+    for (const l of this.lamps) {
+      const state = l.state(world);
+      if (state === l.lit) continue;
+      l.lit = state;
+      l.dot.className = state ? `lamp-bulb is-${state}` : 'lamp-bulb';
+    }
+    const machine = view === 'sps' ? world.injector : world.collider;
+    const load = Math.max(0, Math.min(1.2, machine.telemetry().load));
+    const width = `${(Math.min(load, 1) * 100).toFixed(0)}%`;
+    if (width !== this.meter.width) {
+      this.meter.width = width;
+      this.meter.fill.style.width = width;
+    }
+    const text = `${machine.ring.config.name} ${(load * 100).toFixed(0)}%`;
+    if (text !== this.meter.text) {
+      this.meter.text = text;
+      this.meter.caption.textContent = text;
+    }
+  }
+
+  /** One place's keys. Hidden rather than destroyed: they are built once. */
   private cluster(root: HTMLElement, id: ViewId, items: Item[]): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'control control--group control--cluster';
     wrap.dataset.view = id;
-    for (const [label, short, title, onClick, why, key] of items) {
-      const el = button(wrap, label, onClick, title, key);
-      this.labels.push({ el, long: label, short });
-      if (why) this.block(el, why);
+    for (const [label, short, title, onClick, why, name] of items) {
+      const k = key(wrap, label, onClick, title, name);
+      this.labels.push({ el: k.label, long: label, short });
+      if (why) this.block(k.el, why);
     }
     root.append(wrap);
     this.clusters.set(id, wrap);
@@ -300,7 +402,7 @@ export class Controls {
     onRamp: (up: boolean) => void,
     upTitle: string,
     downTitle: string,
-    key: string,
+    name: string,
   ): void {
     const top = topGeV >= 1000 ? `${(topGeV / 1000).toFixed(1)} TeV` : `${topGeV} GeV`;
     const upLabel = `▲ ramp → ${top}`;
@@ -309,15 +411,10 @@ export class Controls {
     const downShort = `▼ ${bottomGeV} GeV`;
     // Read at the moment it is pressed rather than trusting the label: a ramp that has been
     // reversed while the finger was on the way down must still do the sane thing.
-    const el = button(
-      root,
-      upLabel,
-      () => onRamp(!programmedFor(target(world), topGeV)),
-      upTitle,
-      key,
-    );
+    const k = key(root, upLabel, () => onRamp(!programmedFor(target(world), topGeV)), upTitle, name);
     this.toggles.push({
-      el,
+      el: k.el,
+      label: k.label,
       target,
       topGeV,
       upLabel,
@@ -337,7 +434,7 @@ export class Controls {
    * the readout beside it says `needs both beams`. **Greying one of these does not cancel
    * what it was doing**: the automatic loop switching itself off whenever a snapshot lost a
    * beam is a bug this machine has already had (see `docs/collisions.md`), and `canCog` is
-   * the geometric test written to survive it. A held trim is let go by its own `mouseup`,
+   * the geometric test written to survive it. A held trim is let go by its own `pointerup`,
    * which still arrives, precisely because a greyed button is not `disabled`.
    */
   private cogging(root: HTMLElement, handlers: ControlHandlers): void {
@@ -354,7 +451,7 @@ export class Controls {
       'Trims beam 2 revolution frequency. The beams slip against each other and the point ' +
         'where they meet walks round the ring — hold it and watch the interaction region move.',
     );
-    const auto = button(
+    const auto = key(
       root,
       '◎ auto',
       () => handlers.onAutoCog(),
@@ -362,15 +459,82 @@ export class Controls {
         'insertions are half a ring apart, so aligning one aligns the other.',
       'cog-auto',
     );
-    const right = hold(root, 'cog ▶', (down) => handlers.onCog(down ? 1 : 0), 'The same, the other way.');
+    const right = hold(
+      root,
+      'cog ▶',
+      (down) => handlers.onCog(down ? 1 : 0),
+      'The same, the other way.',
+    );
     const needsTwoBeams = (w: World): string | null =>
       w.canCog ? null : 'it takes a batch in each beam — there is no crossing point to move';
-    for (const el of [left, auto, right]) this.block(el, needsTwoBeams);
+    for (const k of [left, auto, right]) this.block(k.el, needsTwoBeams);
   }
 
   private block(el: HTMLButtonElement, why: (world: World) => string | null): void {
     this.blocks.push({ el, why, title: el.title, shown: undefined });
   }
+}
+
+/** How often the lamps and the meter are read [s of wall time]. */
+const INSTRUMENT_PERIOD = 1 / 6;
+
+/**
+ * The lamps along the nameplate: the five things worth knowing before pressing anything.
+ *
+ * Every one of them is a state the machine really is in, read off the world — a lamp that is
+ * decoration is a lamp nobody believes the next time it lights.
+ */
+interface LampSpec {
+  caption: string;
+  title: string;
+  /** `''` is dark; the rest are the colours in the stylesheet. */
+  state: (world: World) => '' | 'live' | 'hot' | 'ok' | 'warn';
+}
+
+const LAMPS: LampSpec[] = [
+  {
+    caption: 'B1',
+    title: 'A batch going clockwise round the collider.',
+    state: (w) => (w.bunchesInBeam(0, 1) > 0 ? 'live' : ''),
+  },
+  {
+    caption: 'B2',
+    title: 'A batch going the other way round it.',
+    state: (w) => (w.bunchesInBeam(0, -1) > 0 ? 'live' : ''),
+  },
+  {
+    caption: 'RMP',
+    title: 'A machine is on its ramp: the field is moving towards a setpoint it is not at yet.',
+    state: (w) => (ramping(w.collider) || ramping(w.injector) ? 'hot' : ''),
+  },
+  {
+    caption: 'LUM',
+    title: 'The beams are crossing inside an experiment and it is collecting.',
+    state: (w) => (w.detectors.some((d) => d.luminosity > 0) ? 'ok' : ''),
+  },
+  {
+    caption: 'QNC',
+    title: 'A dipole circuit has quenched. Click it in the picture to start it cooling.',
+    state: (w) => (w.collider.quenchedCount + w.injector.quenchedCount > 0 ? 'warn' : ''),
+  },
+];
+
+/** Is this machine between two energies rather than sitting at one? */
+function ramping(machine: { energyGeV: number; targetEnergy: number }): boolean {
+  return Math.abs(machine.energyGeV - machine.targetEnergy) > 0.5;
+}
+
+interface LampView extends LampSpec {
+  dot: HTMLElement;
+  lit: string;
+}
+
+/** The dipole load meter: a bar, and the number it is a picture of. */
+interface Meter {
+  fill: HTMLElement;
+  caption: HTMLElement;
+  width: string;
+  text: string;
 }
 
 /** A control that is sometimes not worth pressing, and what it says while it is not. */
@@ -384,22 +548,25 @@ interface Block {
   shown: string | null | undefined;
 }
 
-/** A place in the bar, and whether anything is going on there. */
+/** A place in the strip, and whether anything is going on there. */
 interface Tab {
   id: ViewId;
   el: HTMLButtonElement;
   dot: HTMLElement;
+  /** What the nameplate says while this place is selected. */
+  name: string;
   mark: string;
 }
 
 /** A ramp button, which says which way it would go. */
 interface Toggle {
   el: HTMLButtonElement;
+  label: HTMLElement;
   target: (world: World) => number;
   topGeV: number;
   upLabel: string;
   downLabel: string;
-  /** The same, for a narrow screen: the tab already says which machine this is. */
+  /** The same, for a narrow screen: the place is named on the desk beside it. */
   upShort: string;
   downShort: string;
   upTitle: string;
@@ -408,14 +575,14 @@ interface Toggle {
 }
 
 /**
- * A cluster entry: label, the same label for a phone, tooltip, what it does, and when it
- * would do nothing.
+ * A cluster entry: label, the same label for a phone, tooltip, what it does, when it would do
+ * nothing, and the name the browser gates press it by.
  *
  * **The short label is not an abbreviation, it is the same words with the context removed.**
- * `⚡ fill SPS` is on the tab that says SPS; `→ LHC beam 1` is reached from a bar whose only
- * other machine is the LHC. On a 390 px screen the long ones are 440 px of button in a row
- * that has 374, and the fix cannot be a scroller — a control you have to find by dragging is
- * a control that is not there.
+ * `⚡ fill SPS` is on a desk whose nameplate says SPS; `→ LHC beam 1` is reached from a place
+ * whose only other machine is the LHC. On a 390 px screen the long ones are 440 px of button
+ * in a row that has 374, and the fix cannot be a scroller — a control you have to find by
+ * dragging is a control that is not there.
  */
 type Item = [string, string, string, () => void, ((world: World) => string | null)?, string?];
 
@@ -429,69 +596,127 @@ function blocked(el: HTMLElement): boolean {
   return el.getAttribute('aria-disabled') === 'true';
 }
 
-/**
- * A control, with a **key that does not change when its label does**.
- *
- * `data-control` is what the browser gates press. They used to match on the visible text, and
- * the moment the narrow layout started shortening labels (`setCompact`) every press in
- * `collide()` silently found nothing: the machine was driven for a minute and a half with two
- * empty beams, and only an unrelated assertion noticed. A driver that matches on the words a
- * button happens to be saying is a driver that goes quiet the day the words change.
- */
-function button(
-  root: HTMLElement,
-  label: string,
-  onClick: () => void,
-  title?: string,
-  key?: string,
-): HTMLButtonElement {
-  const el = document.createElement('button');
-  el.className = 'control control--button';
-  if (key) el.dataset.control = key;
-  el.textContent = label;
-  if (title) el.title = title;
-  el.addEventListener('click', () => {
-    if (!blocked(el)) onClick();
-  });
+/** One bay of the desk. Its width is fixed in the stylesheet; see the note on `Controls`. */
+function bay(root: HTMLElement, className: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = `deck-bay ${className}`;
   root.append(el);
   return el;
 }
 
 /**
- * A button that reports being held down rather than being clicked.
+ * A key on the desk: a lamp and an engraved caption.
+ *
+ * **The caption is its own element**, and it has to be: the lamp is a sibling, and every
+ * `textContent` this class writes — a ramp reversing, every label on a narrow screen — would
+ * otherwise wipe the lamp out. That is not a hypothetical; it is what happened the first time
+ * a key grew one.
+ *
+ * The key carries a **`data-control` that does not change when its caption does**, which is
+ * what the browser gates press it by. They used to match on the visible text, and the moment
+ * the narrow layout started shortening labels (`setCompact`) every press in `collide()`
+ * silently found nothing: the machine was driven for a minute and a half with two empty beams,
+ * and only an unrelated assertion noticed.
+ */
+interface Key {
+  el: HTMLButtonElement;
+  label: HTMLElement;
+}
+
+function key(
+  root: HTMLElement,
+  caption: string,
+  onClick: () => void,
+  title?: string,
+  name?: string,
+): Key {
+  const k = blank(root, caption, title, name);
+  k.el.addEventListener('click', () => {
+    if (!blocked(k.el)) onClick();
+  });
+  return k;
+}
+
+/**
+ * A key that reports being held down rather than being clicked.
  *
  * **Pointer events, not mouse events.** A finger on a phone produces `pointerdown` and
  * `pointerup`; the mouse events a touch browser synthesises from it arrive late, only for
  * taps, and never at all for a hold — which is the whole of what this control is. Capture is
- * taken so a finger that slides off the button still delivers its release: the alternative is
- * a frequency trim nobody can switch off.
+ * taken so a finger that slides off the key still delivers its release: the alternative is a
+ * frequency trim nobody can switch off.
  */
 function hold(
   root: HTMLElement,
-  label: string,
+  caption: string,
   onHold: (down: boolean) => void,
   title?: string,
-): HTMLButtonElement {
-  const el = document.createElement('button');
-  el.className = 'control control--button';
-  el.textContent = label;
-  if (title) el.title = title;
-  el.addEventListener('pointerdown', (e) => {
-    if (blocked(el)) return;
-    el.setPointerCapture(e.pointerId);
+): Key {
+  const k = blank(root, caption, title);
+  k.el.addEventListener('pointerdown', (e) => {
+    if (blocked(k.el)) return;
+    k.el.setPointerCapture(e.pointerId);
     onHold(true);
   });
   // Letting go is always delivered, even by a control that has just gone dead under the
   // finger — the alternative is a trim nobody can switch off.
-  const release = () => onHold(false);
-  el.addEventListener('pointerup', release);
-  el.addEventListener('pointercancel', release);
-  el.addEventListener('lostpointercapture', release);
-  root.append(el);
-  return el;
+  const release = (): void => onHold(false);
+  k.el.addEventListener('pointerup', release);
+  k.el.addEventListener('pointercancel', release);
+  k.el.addEventListener('lostpointercapture', release);
+  return k;
 }
 
-/** A place in the tab bar: a name, and a dot for whether anything is happening there. */
+/** The key itself, with nothing bound to it yet. */
+function blank(root: HTMLElement, caption: string, title?: string, name?: string): Key {
+  const el = document.createElement('button');
+  el.className = 'control control--button';
+  if (name) el.dataset.control = name;
+  const led = document.createElement('i');
+  led.className = 'key-led';
+  const label = document.createElement('span');
+  label.className = 'key-label';
+  label.textContent = caption;
+  el.append(led, label);
+  if (title) el.title = title;
+  root.append(el);
+  return { el, label };
+}
+
+/** A lamp on the nameplate: a bulb and three letters beside it. */
+function lamp(root: HTMLElement, spec: LampSpec): LampView {
+  const el = document.createElement('span');
+  el.className = 'lamp';
+  el.title = spec.title;
+  const dot = document.createElement('i');
+  dot.className = 'lamp-bulb';
+  const caption = document.createElement('span');
+  caption.textContent = spec.caption;
+  el.append(dot, caption);
+  root.append(el);
+  return { ...spec, dot, lit: '' };
+}
+
+/** The dipole load meter: how much of nominal current the circuits are actually carrying. */
+function meter(root: HTMLElement): Meter {
+  const el = document.createElement('div');
+  el.className = 'deck-meter';
+  el.title =
+    'Mean dipole current against nominal, for the machine this place belongs to. A circuit ' +
+    'switched off or quenched carries none, and drags this down with it.';
+  const track = document.createElement('div');
+  track.className = 'meter-track';
+  const fill = document.createElement('div');
+  fill.className = 'meter-fill';
+  track.append(fill);
+  const caption = document.createElement('div');
+  caption.className = 'meter-caption';
+  el.append(track, caption);
+  root.append(el);
+  return { fill, caption, width: '', text: '' };
+}
+
+/** A place in the strip: a name, and a dot for whether anything is happening there. */
 function tab(root: HTMLElement, view: View, onClick: () => void): Tab {
   const el = document.createElement('button');
   el.className = 'control control--tab';
@@ -505,5 +730,5 @@ function tab(root: HTMLElement, view: View, onClick: () => void): Tab {
   el.append(dot, name);
   el.addEventListener('click', onClick);
   root.append(el);
-  return { id: view.id, el, dot, mark: '' };
+  return { id: view.id, el, dot, name: view.label, mark: '' };
 }
