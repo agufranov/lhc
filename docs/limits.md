@@ -146,6 +146,17 @@ tracked in it.
   it is one multiplier on the burn-off rate rather than a pressure profile with a lifetime
   computed from it. Like burn-off it takes population only: the protons still circulating are
   exactly as energetic, and the drawing rule is unchanged.
+- **In a zoomed view, the machine that is not the subject passes behind the rails.** One world
+  is drawn wherever the camera is pointed, so at the injector's own view the collider's arc runs
+  straight across the window - 2355 px of it, measured by `check:render` - and there is nothing
+  to be done about it short of not drawing the rest of the machine, which would be a lie about
+  where the beam is. What is guaranteed instead is that the *subject* of a view is never under a
+  panel: a zoomed camera is fitted between the overlay's own columns and the experiments' cards
+  take the readouts' column there. The overview, which is the view the layout was built for,
+  keeps the full rule. See `rendering.md`.
+- **The experiments' cards are hidden for the 0.75 s of a camera flight.** Coming out of a
+  zoomed view the machine covers the whole window part-way through, and a card is a thing that
+  stands beside the machine.
 - **A window under about 1700 px wide cannot hold the overlay the machine deserves.** The
   experiments' cards need ~440 px beside the readouts' 260 and there is not that much room
   outside the collider's arc; below it the cards retreat into the readout column and the

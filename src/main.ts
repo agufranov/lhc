@@ -18,9 +18,14 @@ const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const world = new World();
 
 const renderer = new Renderer(canvas);
-const hud = new Hud(world);
+const hud = new Hud(world, {
+  onBackend(id) {
+    void swapBackend(id);
+  },
+});
 
 /** The overlay's own furniture, and the two cards whose visibility moves the right rail. */
+const overlayRoot = document.querySelector('.overlay') as HTMLElement;
 const titleRoot = document.querySelector('.title') as HTMLElement;
 const cardA = document.getElementById('panel-ip-a')!;
 const cardB = document.getElementById('panel-ip-b')!;
@@ -44,6 +49,9 @@ function fitOverlay(): void {
     bands,
     overlayChrome(),
     [!cardA.hidden, !cardB.hidden],
+    // A zoomed view has no free band to stand a card in — the machine it is zoomed into fills
+    // the window — so the cards take the readouts' column there and the readouts scroll.
+    renderer.view === 'complex' ? 'beside' : 'column',
   );
   publishLayout(document.documentElement, boxes, bands);
 }
@@ -60,8 +68,8 @@ function overlayChrome(): { title: number; controls: number } {
  * the whole window puts the collider's lowest sector labels behind the button bar, which is
  * where they were.
  */
-function fitCamera(): void {
-  renderer.resize(world, machineBorders(overlayChrome()));
+function fitCamera(dtWall = 0): void {
+  renderer.resize(world, machineBorders(overlayChrome()), dtWall);
 }
 
 const trail = new Float32Array(16_384 * TRAIL_STRIDE);
@@ -89,18 +97,17 @@ const controls = new Controls(controlsRoot, world, {
   onAutoCog() {
     world.autoCog();
   },
-  onRampUp() {
-    world.collider.setTargetEnergy(LHC_CONFIG.topEnergyGeV);
-  },
-  onRampDown() {
-    world.collider.setTargetEnergy(LHC_CONFIG.injectionEnergyGeV);
+  onRamp(up) {
+    world.collider.setTargetEnergy(up ? LHC_CONFIG.topEnergyGeV : LHC_CONFIG.injectionEnergyGeV);
   },
   onInjectorRamp(up) {
     const cfg = world.injector.ring.config;
     world.injector.setTargetEnergy(up ? cfg.topEnergyGeV : cfg.injectionEnergyGeV);
   },
-  onBackend(id) {
-    void swapBackend(id);
+  // A tab is a place: the camera flies there and the bar shows what can be done from it.
+  // Nothing about the machine changes — see `render/views.ts`.
+  onView(id) {
+    renderer.setView(id);
   },
 });
 
@@ -144,8 +151,16 @@ function frame(now: number): void {
   lastFrame = now;
   fps = fps * 0.9 + (1 / Math.max(dtWall, 1e-4)) * 0.1;
 
-  fitCamera();
+  // The camera is moved on wall time and not on the machine clock: a view a paused machine
+  // is looking at still has to be able to change. See `Renderer.resize`.
+  fitCamera(dtWall);
   fitOverlay();
+  // **The experiments' cards are not on screen while the camera is moving.** They are placed
+  // beside the machine, and coming out of a zoomed view the machine covers the whole window
+  // for part of the flight — there is nowhere beside it to be. Hidden by opacity rather than
+  // by `hidden`, so nothing about the layout changes and the rails do not jump; see
+  // `docs/rendering.md`.
+  overlayRoot.classList.toggle('is-flying', renderer.flying);
 
   let steps = 0;
   const t0 = performance.now();
@@ -161,9 +176,9 @@ function frame(now: number): void {
   renderer.render(world, trail, trailCount, paused ? 0 : dtWall);
 
   hud.update(world, { fps, stepsThisFrame: steps, frameMs: performance.now() - t0 });
-  // Which controls would currently do nothing — the ramps already programmed for the energy
-  // they ask for, cogging with only one beam on the orbit. The kickers are never among them.
-  controls.update(world);
+  // Which controls would currently do nothing — cogging with only one beam on the orbit —
+  // and which places have something happening in them. The kickers are never among them.
+  controls.update(world, renderer.view);
   requestAnimationFrame(frame);
 }
 

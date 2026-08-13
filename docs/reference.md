@@ -59,6 +59,12 @@ world extent 12.03 x 10.14 km; collider half-aperture 15.2 px, injector 4.0 px a
 overlay at 1280x860   collider tunnel wall ends at 774 px, the experiments' cards start at
        784, the injector spans x 918..1081 / y 308..469 — so a card sits above it and a
        card below it. check:render asserts the first of those three.
+camera views at 1919x906 (magnification against the overview, which is 1.00x):
+       SPS 3.64x, ATLAS/CMS 3.35x, TI 2/TI 8 1.31x, LHC 0.96x — the collider already fills
+       the overview's height, so its own view is a pan and not a zoom. There is no view of
+       the dumps: a box round both absorbers came out 0.9x, a tab that zooms out.
+       A flight is 0.75 s of wall time = 45 frames, and its overlay bands are sampled at 9
+       points along it (8 + the start); the endpoints alone gave -61 px of clearance
 event cards at 1919x906   480x241 both, picture 196 px, numbers 120 px beside it. Both
        pictures are always the same size (check:render asserts it): they are one detector at
        one radius, read against each other.

@@ -12,6 +12,7 @@ import { SpectrumView } from '../render/spectrum';
 import { magnetColor, rgba, clamp01 } from '../render/palette';
 import { verdictFor } from '../sim/damage';
 import { OPERATING_TEMPERATURE } from '../sim/powering';
+import { listBackends } from '../sim/backend';
 import { Readout } from './readout';
 import { EventPanel } from './eventPanel';
 import { clock, count, duration, energyGeV, fixed, si } from './format';
@@ -40,6 +41,11 @@ interface SectorRow {
   power: HTMLElement;
 }
 
+/** What the HUD can do to the machine. Only one thing, and it is a setting rather than an act. */
+export interface HudHandlers {
+  onBackend?(id: string): void;
+}
+
 export class Hud {
   private beam: Readout;
   private physics: Readout;
@@ -58,13 +64,20 @@ export class Hud {
   private reportRows!: Map<string, HTMLElement>;
   private logRoot!: HTMLElement;
   private ticker: HTMLElement | null = null;
+  /** True when the COMPUTE panel's backend row is the picker rather than a printed name. */
+  private backendPicked = false;
   /** How much of the chronicle is already on screen, so it is not rebuilt every frame. */
   private loggedLines = 0;
   private reportsShown = 0;
   /** Exposure the spectra were last drawn at — they are redrawn when it has moved enough. */
   private drawnAt = -1;
 
-  constructor(world: World) {
+  /**
+   * `onBackend` is optional so a HUD can be built with nothing wired to it; given one, the
+   * COMPUTE panel's `backend` row becomes the picker itself. It used to be a control in the
+   * button bar, which is for things done *to the machine* — see `Readout.rowControl`.
+   */
+  constructor(world: World, handlers: HudHandlers = {}) {
     const machine = world.collider;
     this.beam = new Readout(document.getElementById('panel-beam')!, 'beam');
     this.beam.row('energy', 'energy');
@@ -211,7 +224,12 @@ export class Hud {
     }
 
     this.compute = new Readout(document.getElementById('panel-compute')!, 'compute');
-    this.compute.row('backend', 'backend');
+    if (handlers.onBackend) {
+      this.compute.rowControl('backend', 'backend', backendPicker(world, handlers.onBackend));
+      this.backendPicked = true;
+    } else {
+      this.compute.row('backend', 'backend');
+    }
     this.compute.row('particles', 'macro-particles');
     this.compute.row('stepsturn', 'steps / turn');
     this.compute.row('stepsframe', 'steps / frame');
@@ -364,7 +382,9 @@ export class Hud {
     }
 
     const backend = world.backend;
-    this.compute.set('backend', backend ? backend.label : 'none');
+    // Nothing is written into this row when it holds the picker: `set` replaces the value's
+    // text, and the value *is* the control.
+    if (!this.backendPicked) this.compute.set('backend', backend ? backend.label : 'none');
     this.compute.set('particles', count(world.beam.aliveCount()));
     this.compute.set('stepsturn', count(world.options.stepsPerTurn));
     this.compute.set('stepsframe', count(stats.stepsThisFrame));
@@ -852,4 +872,30 @@ function quietLine(world: World): string {
       : 'flat top, nothing colliding — cog the crossing point onto an experiment';
   }
   return `stable beams — ${(lumi * 2).toExponential(1)} cm⁻²s⁻¹ into the two experiments`;
+}
+
+/**
+ * The backend picker: which processor integrates the equations of motion.
+ *
+ * A `<select>` and not a row of buttons, because the list is open — the WebGPU backend
+ * announces itself as unavailable with a reason, and that reason belongs in the option's own
+ * label where it is read at the moment somebody wonders why they cannot pick it.
+ */
+function backendPicker(world: World, onBackend: (id: string) => void): HTMLElement {
+  const select = document.createElement('select');
+  for (const factory of listBackends()) {
+    const opt = document.createElement('option');
+    opt.value = factory.id;
+    opt.textContent = factory.label;
+    select.append(opt);
+    void factory.unavailableReason().then((reason) => {
+      if (reason) {
+        opt.disabled = true;
+        opt.textContent = `${factory.label} — ${reason}`;
+      }
+    });
+  }
+  select.value = world.backend?.id ?? 'cpu';
+  select.addEventListener('change', () => onBackend(select.value));
+  return select;
 }

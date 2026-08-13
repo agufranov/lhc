@@ -217,6 +217,7 @@ export function eventCardBoxes(
   bands: MachineBands,
   chrome: OverlayChrome,
   showing: [boolean, boolean] = [true, true],
+  place: CardPlacement = 'beside',
 ): OverlayBoxes {
   // The left rail starts under the title; the right one has nothing above it and starts at the
   // top of the window, which is 39 px of column the machine readouts need.
@@ -268,6 +269,15 @@ export function eventCardBoxes(
     // little room that the card would sit *well* over the machine does it fall back into the
     // column — and then the readouts take what is left between the cards and scroll, because
     // a number can be scrolled to and a picture cannot.
+    //
+    // **In a zoomed view there is no "beside" to be had**, and the card goes straight into the
+    // column. Magnify one machine until it fills the window and the *other* one is drawn as an
+    // arc straight across the picture: every strip of screen has machine in it, the overhang
+    // test would be measuring which part of the machine to cover rather than whether to cover
+    // any, and the answer it gave was a card 500 px over the collider's arc. The column is
+    // where the readouts are, they scroll, and the camera in a zoomed view is fitted to stop
+    // short of it — so this is the one placement that keeps the subject of the view clear.
+    if (place === 'column') return beside(windowRight);
     const wide = beside(columnLeft - OVERLAY_GAP);
     const overhang = bands.rightIn(wide.top, wide.top + wide.height) + OVERLAY_GAP - wide.left;
     return overhang <= OVERHANG_ALLOWED ? wide : beside(windowRight);
@@ -311,6 +321,15 @@ export function eventCardBoxes(
     },
   };
 }
+
+/**
+ * Where the experiments' cards are allowed to stand.
+ *
+ * `beside` is the overview's placement and the one this layout was built for: the cards are
+ * measured against the machine and take whatever room it leaves. `column` is what a zoomed
+ * view gets — see the note in `eventCardBoxes`.
+ */
+export type CardPlacement = 'beside' | 'column';
 
 /**
  * The borders the machine must keep clear at the top and bottom of the window.

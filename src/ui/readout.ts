@@ -28,6 +28,20 @@ export class Readout {
     this.values.set(key, v);
   }
 
+  /**
+   * A row whose value is a control rather than a number.
+   *
+   * The backend picker lives here rather than in the button bar, and the distinction is the
+   * point: the bar is for things you *do* to the machine, and which processor is integrating
+   * the equations of motion is not one of them. It belongs beside the number it changes.
+   */
+  rowControl(key: string, label: string, control: HTMLElement, hint?: string): void {
+    this.row(key, label, hint);
+    const slot = this.values.get(key)!;
+    slot.textContent = '';
+    slot.append(control);
+  }
+
   separator(): void {
     const hr = document.createElement('div');
     hr.className = 'sep';

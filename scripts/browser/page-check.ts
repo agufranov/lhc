@@ -67,7 +67,7 @@ function overlap(a: Box, b: Box): number {
   return x > 0 && y > 0 ? Math.round(Math.min(x, y)) : 0;
 }
 
-type ControlState = Array<{ label: string; blocked: boolean }>;
+type ControlState = Array<{ label: string; blocked: boolean; shown: boolean; tab: boolean }>;
 
 /**
  * The button bar's greying, at both ends of a run.
@@ -92,18 +92,19 @@ function checkControls(idle: ControlState, running: ControlState): void {
     );
   };
 
+  // **A ramp is one button now and is therefore never greyed**, in either state: it is a
+  // setpoint, it always says which way it will go, and pressing it always changes something —
+  // including in the middle of a ramp, which reverses it. What used to be greyed here was the
+  // half of a pair that was already programmed, which is a control that should not have been
+  // on screen at all. See `ui/controls.ts`.
   expect(idle, 'empty collider', {
     'ramp → 6.8 TeV': false,
-    'ramp down': true, // already sitting at 450
     '◀ cog': true, // no beams to move against each other
     '◎ auto': true,
     'cog ▶': true,
-    'SPS flat bottom': true, // where it already is
-    'SPS → 450 GeV': false,
   });
   expect(running, 'ramped and colliding', {
-    'ramp → 6.8 TeV': true, // already programmed for it
-    'ramp down': false,
+    'ramp → 450 GeV': false, // the collider is at flat top: the button now offers the way down
     '◀ cog': false,
     '◎ auto': false,
     'cog ▶': false,
@@ -113,7 +114,29 @@ function checkControls(idle: ControlState, running: ControlState): void {
   const kickers = { '→ LHC beam 1': false, '→ LHC beam 2': false, '⏻ beam 1': false, '⏻ beam 2': false };
   expect(idle, 'the kickers, empty', kickers);
   expect(running, 'the kickers, colliding', kickers);
+
+  // **No tab is ever greyed**, and the dumps are never folded away. A tab is a camera
+  // position, which cannot be a no-op — looking at an empty machine is a thing somebody may
+  // want to do — and dumping the beam is the one action nobody should have to navigate to.
+  for (const [when, bar] of [['empty', idle], ['colliding', running]] as const) {
+    const tabs = bar.filter((c) => c.tab);
+    const named = TAB_NAMES.filter((n) => tabs.some((t) => t.label.includes(n)));
+    check(
+      `every place is there and none is greyed out — ${when}`,
+      tabs.length === TAB_NAMES.length && named.length === TAB_NAMES.length && tabs.every((t) => !t.blocked && t.shown),
+      `${tabs.length} tabs, ${tabs.filter((t) => t.blocked).length} greyed: ${tabs.map((t) => t.label).join(' ')}`,
+    );
+    const dumps = bar.filter((c) => c.label.startsWith('⏻'));
+    check(
+      `both dumps are on screen whatever place is selected — ${when}`,
+      dumps.length === 2 && dumps.every((d) => d.shown && !d.blocked),
+      dumps.map((d) => `${d.label}${d.shown ? '' : ' (hidden)'}`).join(', '),
+    );
+  }
 }
+
+/** The places in the bar. `views.ts` names them; this is what they read as on screen. */
+const TAB_NAMES = ['complex', 'SPS', 'TI 2', 'LHC', 'ATLAS', 'CMS'];
 
 for (const [width, height] of sizes) {
   console.log(`--- ${width}x${height} ---`);

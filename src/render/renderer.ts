@@ -45,8 +45,12 @@ import type { DamageSite } from '../sim/damage';
 import { DETECTOR_SHELLS, SEGMENT_STRIDE, SPECIES_COUNT } from '../sim/shower';
 import { INSERTION_HALF_LENGTH_F, INSERTION_RADIUS_F } from '../sim/detector';
 import type { MachineBands } from '../ui/layout';
-import { CAMERA_MARGIN, LABEL_ROOM } from '../ui/layout';
-import { Camera } from './camera';
+import { CAMERA_MARGIN, LABEL_ROOM, OVERLAY_GAP, OVERLAY_PADDING, READOUT_COLUMN } from '../ui/layout';
+import type { Borders, CameraFrame } from './camera';
+import { Camera, easeInOut, frameFor, lerpFrame } from './camera';
+import { MAGNET_GAP_F, MAGNET_WIDTH_F, WALL_F, bore } from './structure';
+import type { ViewId } from './views';
+import { viewBounds } from './views';
 import {
   COLORS,
   MAGNET_CASING,
@@ -72,13 +76,9 @@ const TAIL_MAX_TURNS = 0.4;
 /** Circuit power that maps to a fully grown cloud [W]. */
 const POWER_REFERENCE = 2.2e6;
 
-// --- tunnel and magnet geometry, in units of the ring's half-aperture ---------
-/** Tunnel wall thickness. 0.18 × 250 m = the 45 m the LHC was drawn with. */
-const WALL_F = 0.18;
-/** Clearance between the tunnel wall and the magnet chain (140 m on the LHC). */
-const MAGNET_GAP_F = 0.56;
-/** Width of a magnet body (210 m on the LHC). */
-const MAGNET_WIDTH_F = 0.84;
+// --- tunnel and magnet geometry ----------------------------------------------
+// The fractions themselves are in `structure.ts`, because `views.ts` frames the camera with
+// the same numbers and neither file may import the other.
 const BLOCKS_PER_ARC = 22;
 
 /**
@@ -181,6 +181,17 @@ export class Renderer {
   /** Magnet the pointer is over, for the click affordance. */
   hovered: MagnetPick | null = null;
 
+  /** Where the camera is looking. See `views.ts`, and `setView` for how it gets there. */
+  private viewId: ViewId = 'complex';
+  /** A camera on its way from one view to another, or null when it has arrived. */
+  private flight: Flight | null = null;
+  /** A view asked for before the canvas had a size: applied by the next `resize`. */
+  private pendingView = false;
+  /** The view the current flight started from, for the bands at that end. */
+  private previousView: ViewId = 'complex';
+  /** A camera that is never drawn with: it measures what a frame *would* leave clear. */
+  private scratch = new Camera();
+
   private ctx: CanvasRenderingContext2D;
   private beamCanvas: HTMLCanvasElement;
   private beamCtx: CanvasRenderingContext2D;
@@ -211,7 +222,8 @@ export class Renderer {
   }
 
   /**
-   * Sizes the canvas and fits the machine into what the overlay leaves of the window.
+   * Sizes the canvas and puts the camera where the current view says, moving it if it is on
+   * its way somewhere.
    *
    * `chrome` is how far down the title reaches and how far up the button bar does — measured
    * off the DOM by `main.ts`, because the bar wraps to two rows on a narrow window. It is
@@ -219,49 +231,200 @@ export class Renderer {
    * wall, so a ring fitted to the whole window puts S67 and S78 behind the buttons, which is
    * exactly what it did. The border on a side is therefore whatever that side actually has
    * over it plus room for a label, and never less than `MARGIN`.
+   *
+   * `dtWall` is wall seconds since the last frame, and it is what a camera flight is timed
+   * on — **not** `World.elapsed`. A camera is not part of the machine: it must move at the
+   * same speed whether the simulation is paused, running at 200× or stopped by an incident.
+   * Called with nothing, this is the plain refit it always was, which is what the headless
+   * gates want.
    */
-  resize(world: World, chrome: { top: number; bottom: number } = { top: 0, bottom: 0 }): void {
+  resize(
+    world: World,
+    chrome: { top: number; bottom: number } = { top: 0, bottom: 0 },
+    dtWall = 0,
+  ): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
-    if (
-      w === this.cssWidth &&
-      h === this.cssHeight &&
-      dpr === this.dpr &&
-      chrome.top === this.chromeTop &&
-      chrome.bottom === this.chromeBottom
-    ) {
-      return;
+    const resized =
+      w !== this.cssWidth ||
+      h !== this.cssHeight ||
+      dpr !== this.dpr ||
+      chrome.top !== this.chromeTop ||
+      chrome.bottom !== this.chromeBottom;
+
+    if (!resized && !this.flight && !this.pendingView) return;
+
+    if (resized) {
+      this.dpr = dpr;
+      this.cssWidth = w;
+      this.cssHeight = h;
+      this.chromeTop = chrome.top;
+      this.chromeBottom = chrome.bottom;
+      for (const c of [this.canvas, this.beamCanvas]) {
+        c.width = Math.max(1, Math.round(w * dpr));
+        c.height = Math.max(1, Math.round(h * dpr));
+      }
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.beamCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.beamCtx.clearRect(0, 0, w, h);
+      this.lastBeam.clear();
+      // A flight's two ends are frames, and a frame is only meaningful against the borders it
+      // was fitted in. Rather than re-derive a half-finished one against a window that has
+      // just changed under it, arrive: a camera that lands early while the window is being
+      // dragged is not a bug, and a camera interpolating between two stale frames is.
+      this.flight = null;
     }
 
-    this.dpr = dpr;
-    this.cssWidth = w;
-    this.cssHeight = h;
-    this.chromeTop = chrome.top;
-    this.chromeBottom = chrome.bottom;
-    for (const c of [this.canvas, this.beamCanvas]) {
-      c.width = Math.max(1, Math.round(w * dpr));
-      c.height = Math.max(1, Math.round(h * dpr));
+    const borders = this.borders();
+    if (this.pendingView) {
+      this.pendingView = false;
+      this.startFlight(world, borders);
     }
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.beamCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.beamCtx.clearRect(0, 0, w, h);
-    this.lastBeam.clear();
+
+    if (this.flight) {
+      this.flight.t = Math.min(1, this.flight.t + dtWall / VIEW_FLIGHT_SECONDS);
+      const frame = lerpFrame(this.flight.from, this.flight.to, easeInOut(this.flight.t));
+      this.camera.apply(frame, w, h, borders);
+      // The comet's tail is drawn into its own canvas in **screen** pixels and kept across
+      // frames, so a camera that moves leaves the whole of it behind at the wrong place —
+      // the same smear `clearBeamTrail` exists to prevent when a bunch reappears somewhere
+      // else. There is nowhere to move a screen-space trail to, so it is dropped every frame
+      // of a flight and grows back when the camera lands.
+      this.clearBeamTrail();
+      if (this.flight.t >= 1) this.flight = null;
+    } else {
+      this.camera.apply(frameFor(viewBounds(world, this.viewId), w, h, borders), w, h, borders);
+    }
+
     this.bands = null;
-    // pad by the widest tunnel so no wall is clipped off the edge
-    const b = world.bounds;
-    const pad = bore(world.collider.ring) * (1 + WALL_F);
-    this.camera.fit(
-      { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad },
-      w,
-      h,
-      {
-        left: MARGIN,
-        right: MARGIN,
-        top: Math.max(MARGIN, chrome.top + LABEL_ROOM),
-        bottom: Math.max(MARGIN, chrome.bottom + LABEL_ROOM),
-      },
-    );
+  }
+
+  /** Which view the camera is at, or heading for. */
+  get view(): ViewId {
+    return this.viewId;
+  }
+
+  /** True while the camera is between two views. */
+  get flying(): boolean {
+    return this.flight !== null;
+  }
+
+  /**
+   * Sends the camera to a view. The next `resize` starts it moving; `render` does the rest.
+   *
+   * Idempotent, because it is wired to a tab bar that says which view is current: pressing
+   * the tab you are already at must not restart a flight you have already finished.
+   */
+  setView(id: ViewId): void {
+    if (id === this.viewId) return;
+    this.viewId = id;
+    this.pendingView = true;
+  }
+
+  /**
+   * The borders the machine is fitted inside, from the overlay furniture measured last.
+   *
+   * **The sides are not the same on every view, and that is what keeps the panels off the
+   * machine.** On the overview the machine is height-limited and never reaches the rails, so
+   * the sides are the plain margin and the cards are placed against the geometry — measured,
+   * generous, and the layout this toy was tuned around. Zoom in on one machine and that stops
+   * being true: the subject grows until it covers the whole window, rails and cards and all,
+   * and no arithmetic about where a card goes can help, because there is nowhere left. So a
+   * zoomed view is fitted **between the overlay's own columns**, which costs it nothing that
+   * matters — every one of these views is height-limited too — and makes "no panel is drawn
+   * over the machine" true by construction rather than by measurement.
+   */
+  private borders(): Borders {
+    const side = this.viewId === 'complex' ? MARGIN : OVERLAY_PADDING + READOUT_COLUMN + OVERLAY_GAP;
+    return {
+      left: side,
+      right: side,
+      top: Math.max(MARGIN, this.chromeTop + LABEL_ROOM),
+      bottom: Math.max(MARGIN, this.chromeBottom + LABEL_ROOM),
+    };
+  }
+
+  private startFlight(world: World, borders: Borders): void {
+    const w = this.cssWidth;
+    const h = this.cssHeight;
+    const to = frameFor(viewBounds(world, this.viewId), w, h, borders);
+    // Before the first fit there is nowhere to fly from: land.
+    if (this.camera.scale <= 0 || w === 0 || h === 0) {
+      this.camera.apply(to, w, h, borders);
+      return;
+    }
+    // Described against the box it is about to fly in, not the one it arrived in: the two
+    // differ whenever a flight crosses between the overview and a zoomed view, and a frame
+    // read in the wrong box starts the flight with a sideways jump.
+    const from = this.camera.frame(borders);
+    const fromView = this.flight ? this.flight.toView : this.previousView;
+    this.previousView = this.viewId;
+    this.flight = {
+      from,
+      to,
+      fromView,
+      toView: this.viewId,
+      t: 0,
+      // **The overlay is derived from where the machine is, and during a flight it is in two
+      // places.** Every card is placed against `machineBands`, so bands that followed the
+      // camera would move a card every frame — and a card stands *beside* the machine, so one
+      // that moves while the machine moves under it is one frame away from being drawn on top
+      // of it, which is the one thing the layout may never do. So the flight gets one set of
+      // bands for the whole of it, and the overlay moves exactly twice: when the flight starts
+      // and when it lands.
+      //
+      // **The two ends are not enough to derive them from**, which is the trap here and is
+      // what `check:render` was written to catch: a ring sweeps across the window as the
+      // camera pans, and it can reach further right halfway through than it does at either
+      // end. Measured at −61 px of clearance — a card over the injector's arc — when this was
+      // the union of the endpoints alone. So the flight is sampled.
+      bands: this.flightBands(world, from, to, fromView, borders),
+    };
+  }
+
+  /**
+   * The bands that are clear for **every moment** of a flight, sampled along it.
+   *
+   * Sampled and not solved: where a ring is on screen at time t is a linear pan under a
+   * geometric zoom, and the largest screen x it reaches has no closed form worth having. Nine
+   * samples of a 0.75 s flight is one every 90 ms, which is finer than the motion — and the
+   * gate measures the real thing, every frame of a real flight, against the answer this gave.
+   *
+   * The endpoints are measured under their own view's rule; everything between them is
+   * measured under the **strict** one, where every ring is an obstacle and the free strips are
+   * the window's own halves. Mid-flight there is no "the injector defines the bands" to be
+   * had: it is somewhere in the middle of a pan, and the only safe reading is that anything
+   * on screen might be under a card.
+   */
+  private flightBands(
+    world: World,
+    from: CameraFrame,
+    to: CameraFrame,
+    fromView: ViewId,
+    borders: Borders,
+  ): MachineBands {
+    let bands = this.bandsAt(world, from, fromView, borders);
+    for (let i = 1; i <= FLIGHT_SAMPLES; i++) {
+      const t = i / FLIGHT_SAMPLES;
+      const frame = lerpFrame(from, to, easeInOut(t));
+      // `STRICT_VIEW` is any view that is not the overview: what it selects is the rule, not
+      // a place. The last sample is the destination, under its own rule.
+      const view = i === FLIGHT_SAMPLES ? this.viewId : STRICT_VIEW;
+      bands = unionBands(bands, this.bandsAt(world, frame, view, borders));
+    }
+    return bands;
+  }
+
+  /** The bands a given frame would leave, without moving the real camera. */
+  private bandsAt(
+    world: World,
+    frame: CameraFrame,
+    view: ViewId,
+    borders: Borders,
+  ): MachineBands {
+    this.scratch.apply(frame, this.cssWidth, this.cssHeight, borders);
+    return computeBands(world, this.scratch, view);
   }
 
   /**
@@ -288,86 +451,16 @@ export class Renderer {
    * injector's own band begins and ends, and how far right the machine reaches *above* it and
    * *below* it.
    *
-   * Measured off the geometry that is actually drawn — the closed orbit of both rings and
-   * every transfer and dump line, each padded by its own tunnel wall — because a band computed
-   * from bounding boxes would hand the layout space that TI 8 is lying across.
+   * While the camera is flying this is the union of the two ends — see `startFlight`.
    */
   machineBands(world: World): MachineBands {
+    if (this.flight) return this.flight.bands;
     // Walking both closed orbits and four lines is not free, and none of it moves until the
     // camera does. `resize` drops this.
     if (this.bands) return this.bands;
-    const { camera } = this;
-    const injector = world.injector.ring;
-    const injectorPad = camera.len(bore(injector) * (1 + WALL_F));
-    // Screen y runs the other way from world y: the ring's highest point is its smallest y.
-    const injectorTop = camera.y(injector.bounds.maxY) - injectorPad;
-    const injectorBottom = camera.y(injector.bounds.minY) + injectorPad;
-
-    // Every drawn point as [right edge, top, bottom] in screen px, so asking "how far right
-    // does the machine reach between these two heights" is one scan.
-    //
-    // Two sets, because the two are not worth the same screen. A **ring** is the thing being
-    // looked at and a card over it is a card over the machine. A **transfer line** is a thin
-    // pipe crossing a corner — TI 8 cuts through the top of the band below the injector on
-    // its way in — and holding a whole card's width off the screen for it costs the readouts
-    // beside it far more than the line loses. So the cards are placed against the rings and
-    // the lines are reported, not obeyed.
-    const rings: number[] = [];
-    const lines: number[] = [];
-    const into = (into_: number[]) => (x: number, y: number, pad: number) => {
-      const half = camera.len(pad);
-      const sy = camera.y(y);
-      into_.push(camera.x(x) + half, sy - half, sy + half);
-    };
-    const consider = into(lines);
-
-    const considerRing = into(rings);
-    for (const machine of world.machines) {
-      // The injector is what *defines* the bands; including it would have every card think
-      // the machine reaches to the middle of the SPS.
-      if (machine === world.injector) continue;
-      const ring = machine.ring;
-      const pad = bore(ring) * (1 + WALL_F);
-      const C = ring.config.circumference;
-      const steps = 720;
-      for (let i = 0; i < steps; i++) {
-        const p = poseAtArclength(ring, (C * i) / steps);
-        considerRing(p.x, p.y, pad);
-      }
-    }
-    for (const e of world.extractions) {
-      const line = e.line;
-      const a = line.config.apertureRadius;
-      const pad = a * (1 + WALL_F);
-      for (const [x, y] of sampleLine(line, line.length / 64)) consider(x, y, pad);
-      // The absorber a dump line ends in is wider and longer than the pipe that feeds it.
-      const { x, y, dx, dy } = line.exit;
-      const halfWidth = a * DUMP_BLOCK_HALF_WIDTH_F;
-      const length = a * DUMP_BLOCK_LENGTH_F;
-      for (const along of [0, length]) {
-        for (const across of [-halfWidth, halfWidth]) {
-          consider(x + dx * along + dy * across, y + dy * along - dx * across, 0);
-        }
-      }
-    }
-
-    const rightIn = (points: number[], top: number, bottom: number): number => {
-      let right = 0;
-      for (let i = 0; i < points.length; i += 3) {
-        if (points[i + 2] > top && points[i + 1] < bottom) right = Math.max(right, points[i]);
-      }
-      return right;
-    };
-
-    this.bands = {
-      injectorTop,
-      injectorBottom,
-      rightIn: (top, bottom) => rightIn(rings, top, bottom),
-      linesRightIn: (top, bottom) => rightIn(lines, top, bottom),
-    };
+    this.bands = computeBands(world, this.camera, this.viewId);
     return this.bands;
   }
-
   /** Drops one comet's tail, or every one of them. */
   clearBeamTrail(particle?: number): void {
     if (particle === undefined) {
@@ -1677,11 +1770,6 @@ export class Renderer {
   }
 }
 
-/** Half-aperture of a ring's pipe [m] — the unit everything structural is drawn in. */
-function bore(ring: Ring): number {
-  return ring.config.apertureRadius;
-}
-
 /** Radius of the magnet chain of an arc: inside the ring, clear of the tunnel. */
 function magnetRadius(arcRadius: number, aperture: number): number {
   return arcRadius - aperture * (1 + WALL_F + MAGNET_GAP_F + MAGNET_WIDTH_F / 2);
@@ -1696,4 +1784,144 @@ function pushOut(x: number, y: number, cx: number, cy: number, distance: number)
 
 function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/** How long the camera takes to move between two views [wall seconds]. */
+const VIEW_FLIGHT_SECONDS = 0.75;
+/** How many points along a flight the overlay's bands are measured at. See `flightBands`. */
+const FLIGHT_SAMPLES = 8;
+/**
+ * The view whose *rule* is used for the middle of a flight: any view but the overview.
+ *
+ * `computeBands` asks one question of a view — is the injector defining the free strips, or is
+ * it just another obstacle — and halfway through a pan the answer has to be the second one.
+ */
+const STRICT_VIEW: ViewId = 'lhc';
+
+/** A camera between two views. Both ends are fixed for the whole of it. */
+interface Flight {
+  from: CameraFrame;
+  to: CameraFrame;
+  fromView: ViewId;
+  toView: ViewId;
+  /** 0 at the start, 1 on arrival. Advanced by wall time, not by the machine clock. */
+  t: number;
+  /** The overlay's bands for the whole flight: the union of both ends. See `startFlight`. */
+  bands: MachineBands;
+}
+
+/**
+ * The free bands a camera leaves, measured off the geometry that is actually drawn.
+ *
+ * A free function rather than a method because it is asked about **three** cameras: the real
+ * one, and the two ends of a flight. See `Renderer.machineBands`.
+ *
+ * Measured off the closed orbit of both rings and every transfer and dump line, each padded
+ * by its own tunnel wall, because a band computed from bounding boxes would hand the layout
+ * space that TI 8 is lying across.
+ */
+function computeBands(world: World, camera: Camera, view: ViewId): MachineBands {
+  const injector = world.injector.ring;
+  const injectorPad = camera.len(bore(injector) * (1 + WALL_F));
+  // Screen y runs the other way from world y: the ring's highest point is its smallest y.
+  const rawTop = camera.y(injector.bounds.maxY) - injectorPad;
+  const rawBottom = camera.y(injector.bounds.minY) + injectorPad;
+
+  /**
+   * **The injector defines the bands only while it is in the picture.**
+   *
+   * On the complex view it is what makes them: the strips above and below it run the whole
+   * width of the window with nothing in them, which is where the cards go, and the injector
+   * itself is therefore not an obstacle — a card is never placed in its own band's middle.
+   * Zoom to a single machine and neither half of that is true any more. The injector may be
+   * a thousand pixels off the top of the window, and a band running from 0 to −1000 px is
+   * not a band; and whatever is on screen *is* an obstacle, including the injector, because
+   * now it is the thing being looked at rather than the thing the cards stand beside.
+   *
+   * So: on `complex`, the injector splits the window and is excluded. Anywhere else, the
+   * window's own halves are the strips and every ring counts.
+   */
+  const defining = view === 'complex' && rawBottom > 0 && rawTop < camera.height;
+  const half = camera.height / 2;
+  const injectorTop = defining ? rawTop : half;
+  const injectorBottom = defining ? rawBottom : half;
+
+  // Every drawn point as [right edge, top, bottom] in screen px, so asking "how far right
+  // does the machine reach between these two heights" is one scan.
+  //
+  // Two sets, because the two are not worth the same screen. A **ring** is the thing being
+  // looked at and a card over it is a card over the machine. A **transfer line** is a thin
+  // pipe crossing a corner — TI 8 cuts through the top of the band below the injector on
+  // its way in — and holding a whole card's width off the screen for it costs the readouts
+  // beside it far more than the line loses. So the cards are placed against the rings and
+  // the lines are reported, not obeyed.
+  const rings: number[] = [];
+  const lines: number[] = [];
+  const into = (target: number[]) => (x: number, y: number, pad: number) => {
+    const halfPad = camera.len(pad);
+    const sy = camera.y(y);
+    target.push(camera.x(x) + halfPad, sy - halfPad, sy + halfPad);
+  };
+  const consider = into(lines);
+  const considerRing = into(rings);
+
+  for (const machine of world.machines) {
+    if (defining && machine === world.injector) continue;
+    const ring = machine.ring;
+    const pad = bore(ring) * (1 + WALL_F);
+    const C = ring.config.circumference;
+    const steps = 720;
+    for (let i = 0; i < steps; i++) {
+      const p = poseAtArclength(ring, (C * i) / steps);
+      considerRing(p.x, p.y, pad);
+    }
+  }
+  for (const e of world.extractions) {
+    const line = e.line;
+    const a = line.config.apertureRadius;
+    const pad = a * (1 + WALL_F);
+    for (const [x, y] of sampleLine(line, line.length / 64)) consider(x, y, pad);
+    // The absorber a dump line ends in is wider and longer than the pipe that feeds it.
+    const { x, y, dx, dy } = line.exit;
+    const halfWidth = a * DUMP_BLOCK_HALF_WIDTH_F;
+    const length = a * DUMP_BLOCK_LENGTH_F;
+    for (const along of [0, length]) {
+      for (const across of [-halfWidth, halfWidth]) {
+        consider(x + dx * along + dy * across, y + dy * along - dx * across, 0);
+      }
+    }
+  }
+
+  const rightIn = (points: number[], top: number, bottom: number): number => {
+    let right = 0;
+    for (let i = 0; i < points.length; i += 3) {
+      if (points[i + 2] > top && points[i + 1] < bottom) right = Math.max(right, points[i]);
+    }
+    return right;
+  };
+
+  return {
+    injectorTop,
+    injectorBottom,
+    rightIn: (top, bottom) => rightIn(rings, top, bottom),
+    linesRightIn: (top, bottom) => rightIn(lines, top, bottom),
+  };
+}
+
+/**
+ * The bands that are free at both ends of a flight, and therefore free throughout it.
+ *
+ * Conservative on purpose, in both senses: the injector's strip is the union of where it is
+ * at each end (so the free strips are the *smaller* of the two), and the machine's right edge
+ * is the further right of the two. A card placed against this is clear of the machine at
+ * every moment of the flight without anything having to be measured per frame.
+ */
+function unionBands(a: MachineBands, b: MachineBands): MachineBands {
+  return {
+    injectorTop: Math.min(a.injectorTop, b.injectorTop),
+    injectorBottom: Math.max(a.injectorBottom, b.injectorBottom),
+    rightIn: (top, bottom) => Math.max(a.rightIn(top, bottom), b.rightIn(top, bottom)),
+    linesRightIn: (top, bottom) =>
+      Math.max(a.linesRightIn(top, bottom), b.linesRightIn(top, bottom)),
+  };
 }

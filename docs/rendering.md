@@ -15,6 +15,68 @@ the middle of each detector instead of stopping at it. The transfer lines go las
 structure so their bores close the joint into both tunnels. The showers go after the channels
 they came out of, so the tracks read on top of the damage rather than under it.
 
+## The camera has places, and moves between them
+
+`render/views.ts` names six of them - the whole complex, the injector, the transfer lines, the
+collider, and each experiment - and each is **a box in world metres derived from the geometry
+that is actually built**: a ring's own bounds, a line's own samples, an insertion's own
+half-length, each padded by that object's own tunnel wall. Nothing in that file is a metre
+typed in by hand, so moving an experiment moves its view with it.
+
+A view changes the camera and nothing else. Every particle is stepped whether it is on screen
+or not, and every machine is drawn - which is the source of the one rule that had to be
+restated, below.
+
+**There is no view of the dumps.** The two absorbers stand at opposite corners of the picture,
+so a box round both of them is *wider* than the whole complex: `check:render` measured 0.9x, a
+tab that zooms out. The collider's own view comes out at 0.96x for a related reason - the ring
+already fills the overview's height - and is worth having anyway, because it is a **pan**: the
+injector and the lines leave the picture and the ring is centred. The injector is 3.6x and an
+experiment 3.4x.
+
+**A flight is 0.75 s of wall time**, and wall time is the point: the camera is not part of the
+machine and must move at the same speed whether the simulation is paused, running at 200x, or
+stopped by an incident. The magnification is interpolated **geometrically** and the centre
+linearly (`lerpFrame`) - halfway between 1 px/m and 100 px/m is 10, not 50, and a camera
+crossing from the whole complex to the inside of a detector arrives with a lurch otherwise.
+
+Three things a moving camera breaks, and what each costs:
+
+- **The comet's tail is dropped every frame of a flight.** It is a screen-space trail kept
+  across frames (`beamCanvas`), so a camera that moves leaves the whole of it behind at the
+  wrong place - the same smear `clearBeamTrail` exists to prevent when a bunch reappears
+  somewhere else. There is nowhere to move a screen-space trail to. It grows back on landing.
+- **The overlay is derived from where the machine is, and during a flight it is in two
+  places.** Cards are placed against `machineBands`, so bands that followed the camera would
+  move a card every frame - and a card stands *beside* the machine, so one moving while the
+  machine moves under it is one frame from being drawn on top of it. So a flight gets one set
+  of bands for the whole of it, and the overlay moves exactly twice. **The union of the two
+  ends is not enough to derive them from**: a ring sweeps across the window and reaches further
+  right halfway through than at either end (measured at -61 px of clearance, a card on the
+  injector's arc). The flight is sampled at nine points instead.
+- **The experiments' cards are not on screen while the camera moves.** Coming out of a zoomed
+  view the machine covers the whole window for part of the flight and there is nowhere beside
+  it to be. Hidden by opacity rather than `hidden`, so no box moves and the rails do not jump.
+
+### What "no panel over the machine" means once the camera can zoom
+
+It cannot mean quite what it meant. One world is drawn wherever the camera is pointed, so
+magnify the injector and the collider's arc runs straight across the window behind the rails -
+`check:render` prints 2355 px of it. The rule that survives, asserted per view:
+
+- **A zoomed view is fitted between the overlay's own columns.** `Renderer.borders` returns the
+  plain `CAMERA_MARGIN` on the overview - where the machine is height-limited and never reaches
+  the rails, and where the cards are placed against the geometry, which is the layout this toy
+  was tuned around - and the rails' own column width everywhere else. It costs nothing: every
+  one of these views is height-limited too, so the magnifications above are what the loose
+  borders would have given anyway.
+- **The subject of the view is never under a rail or a card**, and that is what is checked.
+  What passes behind the rails is the rest of the machine, and it is stated in `limits.md`.
+- **In a zoomed view the cards go into the readouts' column**, deterministically
+  (`CardPlacement`), because there is no free band to stand one in - the placement machinery
+  would otherwise be choosing *which* part of the machine to cover rather than whether to cover
+  any, and it chose a card 500 px over the collider's arc.
+
 ## What is magnified, and what is not
 
 **The beam is never magnified.** Where the comet is drawn is where the integrator put it, and
@@ -199,19 +261,54 @@ Two traps found writing those:
   records as a one-point arc. A filter that picked track batches by colour alone counted it and
   reported half a segment.
 
+## The button bar is a place and its controls
+
+It used to be one flat row of thirteen buttons and a picker, ordered the way the machine is
+plumbed. That order is right for somebody who knows the cycle and useless to anybody who does
+not, because every control is equally loud and nothing says which machine it belongs to.
+
+So the bar is `pause` - **the places** - **what can be done at the place selected** - **the
+dumps**, and the places are exactly the camera's views: one bar doing both jobs, because "which
+machine am I at" and "what am I looking at" are the same question, and answering it twice is how
+a toy grows two navigations. What follows from that:
+
+- **Nothing is removed, only folded.** Every instructive mistake - injecting into a ramped
+  collider, arming a kicker with no beam - is two presses away instead of one, and no press is
+  refused that was not refused before.
+- **The dumps never fold.** They sit at the right-hand end whatever place is selected: dumping
+  the beam is the one action nobody should have to navigate to.
+- **A ramp is one button, not two.** It is a *setpoint* - the machine is either programmed for
+  flat top or for injection energy - so two buttons meant one of them was always the greyed
+  one, which is the definition of a control that should not be there. One button that says
+  which way it will go is never a no-op, and pressing it mid-ramp reverses it, which a real
+  machine also allows. `check:page` asserts no ramp is ever greyed.
+- **The backend picker left the bar** for the COMPUTE panel (`Readout.rowControl`). The bar is
+  for things done *to the machine*; which processor integrates the equations of motion is not
+  one of them, and it belongs beside the number it changes.
+- **The bar's height is load-bearing** and is held at a floor in the stylesheet. `main.ts`
+  measures it every frame and the camera is fitted inside it, so a bar that changed height as
+  the cluster changed would refit the machine on every tab press - and a refit lands a camera
+  that is still flying.
+- **A held control is on pointer events**, not mouse events: a finger produces `pointerdown`,
+  and the mouse events a touch browser synthesises arrive late, only for taps, and never for a
+  hold - which is the whole of what cogging is. The capture is taken so a finger sliding off
+  the button still delivers its release.
+
 ## What a control may be greyed out for
 
 One rule, in `ui/controls.ts`: **a control is greyed only when pressing it would do nothing at
 all.** Not when it would do something bad — a machine that refuses the interesting mistakes is
 a machine with nothing to find out in it.
 
-So the ramps grey when the machine is already programmed for the energy they ask for
-(`setTargetEnergy` is idempotent), filling greys while the chain is already delivering
-(`requestFill` returns immediately), and the three cogging controls grey with fewer than two
-beams on the orbit (`World.canCog` — there is no crossing point to move, and the readout beside
+So filling greys while the chain is already delivering (`requestFill` returns immediately),
+and the three cogging controls grey with fewer than two beams on the orbit (`World.canCog` — there is no crossing point to move, and the readout beside
 it says `needs both beams`). **The kickers are never greyed**, injection or dump: arming one
 into a collider that has ramped is the single most instructive press in the toy, and charging a
-kicker before there is a beam for it is a thing an operator may want to do.
+kicker before there is a beam for it is a thing an operator may want to do. **No ramp is greyed
+either**, since it became one button, and **no place is**: a camera position cannot be a no-op,
+because looking at an empty machine is a thing somebody may want to do. What the empty places
+get instead of grey is a mark - a dot when there is beam inside the view's box, a warm one when
+the place is doing the thing it exists for (`viewActivity`).
 
 Three things this had to get right:
 

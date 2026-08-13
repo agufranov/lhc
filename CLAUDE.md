@@ -115,6 +115,12 @@ npm run shot -- 1919 906 out.png   # a screenshot of the running toy, headless
   `npm start` then fails with `Port 5173 is already in use`. Vite resolves modules from
   disk on every request, so an older server still serves current code — check with
   `Invoke-WebRequest` for a known new symbol rather than restarting blindly.
+- **Check whose server it is.** The port may be held by a *different project* — this machine
+  has had two others on 5173 and 5174 — and the browser gates and `npm run shot` use whatever
+  is listening, so they will happily measure and photograph somebody else's application.
+  Confirm with `curl -s http://127.0.0.1:5173/ | grep '<title>'`, which must say
+  `LHC — beam playground`; otherwise start one on a free port and give every browser command
+  `LHC_URL=http://127.0.0.1:<port>/`.
 - A git repository, on `main`. Make commit on each significant step. **Pushing `main` publishes the toy**: `.github/workflows/pages.yml`
   runs typecheck, `check`, `check:render`, `vite build`, and deploys `dist/` to GitHub Pages.
   A red check there means nothing ships, which is the point — do not push work that fails
@@ -177,7 +183,9 @@ src/sim/
   world.ts       the whole complex: machines, lines, ONE beam array, ONE backend,
                  plus the fill in progress, the chronicle and when to dump
 src/render/
-  camera.ts      world <-> screen, including the inverse for hit testing
+  camera.ts      world <-> screen, the inverse for hit testing, and camera frames
+  structure.ts   the fractions everything is drawn in: wall, magnet gap, magnet width, bore
+  views.ts       the named places the camera can be, what each frames, what is happening there
   palette.ts     magnet, casing, incandescence ramps and the one species colour table
   renderer.ts    all drawing of the machine, plus pickMagnet hit testing
   eventDisplay.ts  the r-phi event display, into an experiment's own canvas
@@ -220,9 +228,13 @@ argued in the page named beside it.
 - **The ring's dipoles are never touched by an extraction**, in the physics or in the
   drawing. → `beamlines.md`
 - **A control is greyed out only when pressing it would do nothing at all** — never when it
-  would do something instructive and bad, which is why no kicker is ever greyed. → `rendering.md`
+  would do something instructive and bad, which is why no kicker is ever greyed, no ramp is
+  (one button, two directions) and no view is. Nothing is *removed* either, only folded into
+  the place it belongs to, one press away. → `rendering.md`
 - **Anything the user can see is asserted** — in `check:render` if it is drawn, in
   `check:page` if it is placed. → this page, above.
+- **The camera has named places and moves between them smoothly**, and moving it changes
+  nothing but the camera: one world is stepped and drawn wherever it is pointed. → `rendering.md`
 - **No overlay panel is drawn over the machine, and no panel over another panel.** Every box
   in the overlay is *derived* from where the camera actually put the machine
   (`Renderer.machineBands` → `ui/layout.ts`), never declared beside it; `check:render` sweeps

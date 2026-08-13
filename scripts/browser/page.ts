@@ -108,15 +108,51 @@ export async function open(width: number, height: number, quiet = true): Promise
   };
 }
 
-/** Clicks a control by a fragment of its visible label. */
+/**
+ * Clicks a control by a fragment of its visible label.
+ *
+ * **Visible, and it matters.** The bar shows one place's controls at a time, and the ones
+ * belonging to the other places are in the DOM with `hidden` on them — where `click()` would
+ * still fire their handlers, which is a press no user could make. It also disambiguates: the
+ * injector's ramp reads `▲ ramp → 450 GeV` and the collider's reads `▼ ramp → 450 GeV`, and
+ * only one of the two clusters is ever on screen.
+ */
 export async function press(page: Page, label: string): Promise<boolean> {
   return page.evaluate((text: string) => {
-    const buttons = Array.from(document.querySelectorAll('#controls button'));
+    const buttons = Array.from(document.querySelectorAll('#controls button')).filter(
+      (b) => (b as HTMLElement).offsetParent !== null,
+    );
     const hit = buttons.find((b) => (b.textContent ?? '').trim().includes(text));
     if (!hit) return false;
     (hit as HTMLButtonElement).click();
     return true;
   }, label);
+}
+
+/**
+ * Goes to a place: clicks the tab whose name contains `label` and waits for the camera.
+ *
+ * The camera takes three quarters of a second to fly and the cluster of controls under the
+ * tabs swaps at the press, so waiting is not about the buttons — it is about not measuring
+ * the overlay while the machine is still moving under it.
+ */
+export async function selectView(page: Page, label: string): Promise<boolean> {
+  const hit = await page.evaluate((text: string) => {
+    const tabs = Array.from(document.querySelectorAll('#controls .control--tab'));
+    const found = tabs.find((b) => (b.textContent ?? '').trim().includes(text));
+    if (!found) return false;
+    (found as HTMLButtonElement).click();
+    return true;
+  }, label);
+  await wait(1.1);
+  return hit;
+}
+
+/** Whether the camera is between two views right now. */
+export async function flying(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () => (window as unknown as { lhc: { renderer: { flying: boolean } } }).lhc.renderer.flying,
+  );
 }
 
 /**
@@ -126,11 +162,15 @@ export async function press(page: Page, label: string): Promise<boolean> {
  * where the reason is — so this reads the attribute the app actually sets. See
  * `ui/controls.ts` for which controls may be greyed and which may never be.
  */
-export async function controlStates(page: Page): Promise<Array<{ label: string; blocked: boolean }>> {
+export async function controlStates(
+  page: Page,
+): Promise<Array<{ label: string; blocked: boolean; shown: boolean; tab: boolean }>> {
   return page.evaluate(() =>
     Array.from(document.querySelectorAll('#controls button')).map((b) => ({
       label: (b.textContent ?? '').trim(),
       blocked: b.getAttribute('aria-disabled') === 'true',
+      shown: (b as HTMLElement).offsetParent !== null,
+      tab: b.classList.contains('control--tab'),
     })),
   );
 }
@@ -179,19 +219,25 @@ export async function until(
  * screenshot to discover.
  */
 export async function collide(page: Page, settle = 8): Promise<void> {
+  // The bar shows one place's controls at a time, so getting a fill into the collider is a
+  // walk from machine to machine — which is what it is on the real thing too, and what the
+  // tabs are for. See `ui/controls.ts`.
+  await selectView(page, 'SPS');
   for (const [n, beam] of [['1', '→ LHC beam 1'], ['2', '→ LHC beam 2']] as const) {
     // Back to flat bottom first, explicitly: an SPS sitting at 450 GeV holds the fill —
-    // "chain holding, waiting for flat bottom" — and no batch is ever delivered.
-    await press(page, 'SPS flat bottom');
+    // "chain holding, waiting for flat bottom" — and no batch is ever delivered. The ramp is
+    // one button that says which way it will go, so this is the same button as the one below.
+    await press(page, 'ramp → 26 GeV');
     await press(page, 'fill SPS');
     await until(page, 'panel-injector', (t) => /batches ready\s*[1-9]/.test(t));
-    await press(page, 'SPS → 450 GeV');
+    await press(page, 'ramp → 450 GeV');
     await until(page, 'panel-injector', (t) => t.includes('ready to extract'));
     await press(page, beam);
     // The kicker is armed, not fired: it waits for the bucket that puts this batch head-on
     // with the other beam. Ramping before it fires loses the batch into a wall.
     await until(page, 'panel-beam', (t) => new RegExp(`beam ${n}\\s*\\d+ batches`).test(t));
   }
+  await selectView(page, 'LHC');
   await press(page, 'ramp → 6.8 TeV');
   await until(page, 'panel-power', (t) => t.includes('flat top'), 30);
   // **Cog, and mean it.** Injection no longer waits for a phase — the phases it could reach

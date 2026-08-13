@@ -50,6 +50,19 @@ body {
   display: none !important;
 }
 
+/* While the camera is flying between two views, the experiments' cards are not shown: a card
+   stands *beside* the machine, and for part of a flight out of a zoomed view the machine is
+   everywhere. Opacity and not `hidden`, so the boxes keep their places and the rails beside
+   them do not move — see `main.ts`. */
+.overlay.is-flying .panel--event {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel--event {
+  transition: opacity 0.18s;
+}
+
 .title {
   grid-row: 1;
   display: flex;
@@ -234,6 +247,14 @@ body {
   gap: 8px;
   min-height: 0;
   overflow-y: auto;
+  /* Without this, hovering the rail grew a horizontal scrollbar too. The reveal below widens
+     the vertical bar from 0 to 6 px on hover, which is 6 px taken out of the content box, and
+     the panels inside are a fixed 260 px (`--readout-column`) — so they started overrunning it
+     by exactly the bar's width. Nothing here was meant to scroll sideways; `overflow-x` was
+     only ever `visible` by omission, and the spec resolves a `visible`/non-`visible` pair by
+     turning the `visible` axis into `auto` too, so that 6 px overrun became a second
+     scrollbar. Pin it shut. */
+  overflow-x: hidden;
   scrollbar-width: none;
   pointer-events: auto;
 }
@@ -501,7 +522,12 @@ body {
   margin-top: 6px;
 }
 
+/* The bar's height is load-bearing: `main.ts` measures it every frame and the camera is
+   fitted inside it, so a bar that grew or shrank as the cluster changed would refit the
+   machine on every tab press — and a refit lands a camera that is still flying. Every cluster
+   is one row of buttons the same height as the tabs beside them, and this holds the floor. */
 .controls {
+  min-height: 52px;
   grid-row: 3;
   pointer-events: auto;
   justify-self: center;
@@ -553,6 +579,82 @@ body {
   align-items: center;
   gap: 8px;
   padding-left: 6px;
+}
+
+/* The places, as one segmented control. It is navigation, not command: it reads as a strip
+   of names rather than a row of buttons, which is the whole reason the bar is legible now. */
+.control--tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(8, 14, 24, 0.5);
+}
+
+.control--tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.control--tab:hover {
+  color: var(--text);
+  background: rgba(40, 70, 110, 0.35);
+}
+
+.control--tab.is-current {
+  color: #e8f2ff;
+  background: rgba(60, 110, 170, 0.5);
+  border-color: rgba(120, 180, 240, 0.4);
+}
+
+/* Whether there is anything to look at over there. Never a reason to grey a tab out — see
+   `ui/controls.ts`. The dot keeps its space when it is not lit, or every tab would move
+   sideways the moment a batch arrived somewhere. */
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: transparent;
+  flex: none;
+}
+
+.dot--live {
+  background: #4ea8ff;
+}
+
+.dot--hot {
+  background: var(--hot);
+  box-shadow: 0 0 6px rgba(255, 179, 92, 0.9);
+}
+
+/* One place's controls. Empty for the places that are only worth looking at, and an empty
+   cluster must not draw its own dividers. */
+.control--cluster:empty {
+  display: none;
+}
+
+/* The one action that is never folded away, and is not a navigation away from wherever you
+   are. It says so by being the only warm thing in the bar. */
+.control--dump .control--button {
+  background: rgba(90, 40, 40, 0.4);
+  border-color: rgba(200, 110, 90, 0.3);
+}
+
+.control--dump .control--button:hover {
+  background: rgba(140, 55, 50, 0.55);
+  border-color: rgba(255, 140, 110, 0.5);
 }
 
 /* a captioned cluster, so five actions do not read as one row of five */

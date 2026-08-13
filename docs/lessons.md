@@ -213,3 +213,26 @@ None of these threw. All of them looked like broken physics.
   The bands are defined as *above the injector's top* and *below its bottom*, and the SPS's
   own extreme points landed exactly on those lines, so floating-point equality handed every
   card an obstacle at the middle of the SPS. The ring that defines a band is excluded from it.
+- **The union of a flight's two ends does not bound its middle.** The overlay is derived from
+  where the machine is, so a camera moving between two views has to hand the layout one set of
+  bands for the whole flight — and the obvious conservative choice, "whatever is clear at both
+  ends", is wrong: a ring sweeps across the window as the camera pans and reaches further right
+  halfway through than at either end. Measured at −61 px of clearance, a card sitting on the
+  injector's arc, by the assertion written the same hour. The bands are sampled along the whole
+  flight now. **A box interpolated between two boxes does not stay inside their union.**
+- **In a zoomed view, "no panel is over the machine" is not achievable and the honest rule is
+  narrower.** One world is drawn wherever the camera looks, so magnify the injector and the
+  collider's arc runs straight across the window behind the rails — measured at 2355 px of it.
+  What is guaranteed instead: the *subject* of the view is fitted between the overlay's own
+  columns, and a card never stands over it. The first attempt asserted the old rule in the new
+  views, failed by 500 px, and the temptation was to weaken the assertion rather than to say
+  what was actually true.
+- **A card over a view's bounding box is not a card over the machine.** The box round an
+  insertion is mostly empty sky above and below the beam pipe; an assertion phrased against the
+  box condemned a card standing over nothing at all. Measure against what is *drawn*.
+- **Port 5173 may be serving somebody else's project.** The browser gates and `npm run shot`
+  use whatever is already listening rather than starting their own server — which is right, and
+  it means a dev server left running from *another repository* is what gets measured and
+  photographed. A screenshot of a completely different application came back looking plausible.
+  `LHC_URL=http://127.0.0.1:<port>/` picks the right one; the giveaway is `curl -s <url> | grep
+  '<title>'`, which must say `LHC — beam playground`.

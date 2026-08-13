@@ -15,8 +15,10 @@ import { World, poseAtArclength } from '../src/sim/world';
 import { sampleLine } from '../src/sim/line';
 import { SEGMENT_STRIDE, TRACKER_RADIUS } from '../src/sim/shower';
 import {
+  CAMERA_MARGIN,
   EVENT_CANVAS_MAX,
   EVENT_CANVAS_MIN,
+  LABEL_ROOM,
   OVERHANG_ALLOWED,
   OVERLAY_GAP,
   OVERLAY_PADDING,
@@ -24,6 +26,8 @@ import {
   eventCardBoxes,
   machineBorders,
 } from '../src/ui/layout';
+import type { ViewId } from '../src/render/views';
+import { listViews, viewBounds } from '../src/render/views';
 import { CpuBackend } from '../src/sim/backends/cpuBackend';
 import { TRAIL_STRIDE } from '../src/sim/backend';
 
@@ -1578,6 +1582,282 @@ console.log('--- the mass spectrum, drawn ---');
     pctx.texts.map((t) => t.text).join(' '),
   );
   void HIGGS_MASS;
+}
+
+
+// --- the camera's named places ------------------------------------------------
+//
+// A view is a box in world metres and a flight is an interpolation between two of them, and
+// **both are invisible to every other check in this file**: the machine is drawn exactly the
+// same way wherever the camera is. What can go wrong is that a view frames the wrong thing,
+// that it frames it and then clips it, or — the one that matters — that the overlay lands on
+// the machine while the camera is between two places, because every panel in the window is
+// derived from where the machine is and during a flight it is in two places at once.
+{
+  console.log('--- the camera goes places ---');
+  const w = new World();
+  w.attachBackend(new CpuBackend());
+  const W = 1919;
+  const H = 906;
+  const CHROME = { top: 28, bottom: 52 };
+  // The same arithmetic `Renderer.resize` does: a side's border is what the overlay has over
+  // it plus room for the labels drawn outside the tunnel, and never less than the margin.
+  const topBorder = Math.max(CAMERA_MARGIN, CHROME.top + LABEL_ROOM);
+  const bottomBorder = Math.max(CAMERA_MARGIN, CHROME.bottom + LABEL_ROOM);
+  const r = new Renderer(makeCanvas(W, H) as unknown as HTMLCanvasElement);
+  r.resize(w, CHROME);
+  const complexScale = r.camera.scale;
+
+  /** Where a box lands on the screen, given the camera as it is now. */
+  const onScreen = (b: { minX: number; minY: number; maxX: number; maxY: number }) => ({
+    left: r.camera.x(b.minX),
+    right: r.camera.x(b.maxX),
+    top: r.camera.y(b.maxY),
+    bottom: r.camera.y(b.minY),
+  });
+
+  // The one thing that can put a panel over the machine. Measured independently of the
+  // renderer's own arithmetic: this walks both closed orbits through the camera as it is on
+  // each frame of the flight, and asks whether any of it is under a card.
+  const ringRightIn = (top: number, bottom: number): number => {
+    let right = 0;
+    for (const machine of w.machines) {
+      const ring = machine.ring;
+      const pad = ring.config.apertureRadius * 1.18;
+      const C = ring.config.circumference;
+      for (let i = 0; i < 720; i++) {
+        const p = poseAtArclength(ring, (C * i) / 720);
+        const half = r.camera.len(pad);
+        const sy = r.camera.y(p.y);
+        if (sy + half > top && sy - half < bottom) right = Math.max(right, r.camera.x(p.x) + half);
+      }
+    }
+    return right;
+  };
+
+  /** The same, the other way: how far *left* the rings reach between two screen heights. */
+  const ringLeftIn = (top: number, bottom: number): number => {
+    let left = Infinity;
+    for (const machine of w.machines) {
+      const ring = machine.ring;
+      const pad = ring.config.apertureRadius * 1.18;
+      const C = ring.config.circumference;
+      for (let i = 0; i < 720; i++) {
+        const p = poseAtArclength(ring, (C * i) / 720);
+        const half = r.camera.len(pad);
+        const sy = r.camera.y(p.y);
+        if (sy + half > top && sy - half < bottom) left = Math.min(left, r.camera.x(p.x) - half);
+      }
+    }
+    return left;
+  };
+
+  console.log('   view        magnification   subject on screen');
+  for (const view of listViews(w)) {
+    r.setView('complex');
+    r.resize(w, CHROME, 10); // ten seconds of wall time: land, whatever the flight length
+    r.setView(view.id);
+    r.resize(w, CHROME, 10);
+    check(
+      `the camera arrives at ${view.id}`,
+      !r.flying && r.view === view.id,
+      `flying=${r.flying}`,
+    );
+
+    // The subject of the view has to be *in* the picture: fitted, not merely aimed at.
+    const box = onScreen(viewBounds(w, view.id));
+    const inside =
+      box.left > -1 && box.right < W + 1 && box.top > -1 && box.bottom < H + 1;
+    const magnification = r.camera.scale / complexScale;
+    console.log(
+      `   ${view.id.padEnd(10)}  ${magnification.toFixed(1).padStart(8)}×      ` +
+        `${box.left.toFixed(0)}..${box.right.toFixed(0)} × ${box.top.toFixed(0)}..${box.bottom.toFixed(0)}`,
+    );
+    check(`and ${view.id} is framed inside the window`, inside);
+    // A tab that zooms *out* is a tab that shows less of what it is named after than the
+    // overview does — which is what the dumps did, and why there is no view of them.
+    // The collider's own view comes out at 1.0×: the ring already fills the overview's
+    // height, so its tab is a pan — the injector and the lines leave the picture and the ring
+    // is centred — and not a magnification. Anything that actually zoomed *out* would be a
+    // tab showing less of its subject than the overview does, which is why the dumps have no
+    // view at all.
+    check(
+      `and ${view.id} never shows less than the overview`,
+      magnification > 0.95,
+      `${magnification.toFixed(2)}×`,
+    );
+    // The subject is centred in the box the borders leave, not merely inside it. This is what
+    // separates "the camera went there" from "the camera happened to include it": the LHC
+    // fills the overview's height already, so its own view gains nothing in magnification and
+    // everything in being *centred* on the ring with the injector out of the picture.
+    const boxMid = (topBorder + (H - bottomBorder)) / 2;
+    check(
+      `and it is centred on its subject`,
+      Math.abs((box.left + box.right) / 2 - W / 2) < 2 && Math.abs((box.top + box.bottom) / 2 - boxMid) < 2,
+    );
+
+    // **What a panel may never be over is the thing the view is of.**
+    //
+    // On the overview that is the whole machine, and it is a measurement: the cards are placed
+    // against the geometry (`machineBands`), so the assertion is the card's own clearance. In
+    // a zoomed view it can only be the view's *subject*, and that is not a weakening but the
+    // honest statement of what is possible — zoom to the injector and the collider's arc is
+    // drawn straight across the window behind the rails, because one world is drawn whatever
+    // the camera is looking at. The subject is kept clear by arithmetic: a zoomed camera is
+    // fitted between the overlay's own columns. See `docs/limits.md`.
+    const bands = r.machineBands(w);
+    const boxes = eventCardBoxes(
+      W,
+      H,
+      bands,
+      { title: CHROME.top, controls: CHROME.bottom },
+      [true, true],
+      view.id === 'complex' ? 'beside' : 'column',
+    );
+    const railRight = OVERLAY_PADDING + READOUT_COLUMN;
+    const subjectClear = Math.min(box.left - railRight, W - railRight - box.right);
+    check(
+      `and the rails do not stand over ${view.id}`,
+      subjectClear > 0,
+      `${subjectClear.toFixed(0)} px to spare`,
+    );
+    // The cards are measured against what is *drawn*, not against the view's box: the box
+    // round an insertion is mostly empty sky above and below the beam pipe, and a card in that
+    // sky is over nothing at all. `OVERHANG_ALLOWED` is the same tolerance the sweep above
+    // uses, and for the same reason — a card's corner a few pixels over an arc costs less than
+    // a readout scrolled off the screen.
+    let cardClear = Infinity;
+    for (const card of [boxes.cards[0], boxes.cards[1]]) {
+      if (!card) continue;
+      cardClear = Math.min(
+        cardClear,
+        view.id === 'complex'
+          ? card.left - ringRightIn(card.top, card.top + card.height)
+          : card.left - box.right,
+      );
+    }
+    check(
+      `and no card is over ${view.id === 'complex' ? 'the machine' : 'it'} at ${view.id}`,
+      cardClear > -OVERHANG_ALLOWED,
+      `${cardClear.toFixed(0)} px, against ${OVERHANG_ALLOWED} px of overhang allowed`,
+    );
+    if (view.id !== 'complex') {
+      const under = Math.max(railRight - ringLeftIn(0, H), ringRightIn(0, H) - (W - railRight), 0);
+      if (under > 0) console.log(`   (the rest of the machine passes the rails by ${under.toFixed(0)} px here)`);
+    }
+  }
+
+  /** How wide a view's box is [m] — which way a flight between two of them zooms. */
+  const viewSpan = (world: World, id: ViewId): number => {
+    const b = viewBounds(world, id);
+    return Math.max(b.maxX - b.minX, b.maxY - b.minY);
+  };
+
+  // Every flight, not one of them: what can put a card on the machine is a ring sweeping
+  // across the window, and which pair of views does that worst is not something to guess at.
+  const pairs: Array<[ViewId, ViewId]> = [
+    ['complex', 'sps'],
+    ['sps', 'complex'],
+    ['complex', 'ip-a'],
+    ['ip-a', 'lhc'],
+    ['lhc', 'ti'],
+    ['ti', 'ip-b'],
+    ['ip-b', 'sps'],
+    ['sps', 'lhc'],
+  ];
+  let worstClearance = Infinity;
+  let worstPair = '';
+  let bandsStill = true;
+  let framesFlown = 0;
+  let zoomMonotonic = true;
+  for (const [a, b] of pairs) {
+    r.setView(a);
+    r.resize(w, CHROME, 10);
+    r.setView(b);
+    const firstBands = { top: 0, bottom: 0, right: 0 };
+    let lastScale = r.camera.scale;
+    const zoomingIn = viewSpan(w, a) > viewSpan(w, b);
+    for (let i = 0; i < 120 && (i === 0 || r.flying); i++) {
+      r.resize(w, CHROME, 1 / 60);
+      if (r.flying) framesFlown++;
+      if (zoomingIn && r.camera.scale < lastScale - 1e-9) zoomMonotonic = false;
+      if (!zoomingIn && r.camera.scale > lastScale + 1e-9) zoomMonotonic = false;
+      lastScale = r.camera.scale;
+
+      const bands = r.machineBands(w);
+      const boxes = eventCardBoxes(W, H, bands, { title: CHROME.top, controls: CHROME.bottom }, [true, true]);
+      if (i === 0) {
+        firstBands.top = bands.injectorTop;
+        firstBands.bottom = bands.injectorBottom;
+        firstBands.right = bands.rightIn(0, H);
+      } else if (r.flying) {
+        if (
+          bands.injectorTop !== firstBands.top ||
+          bands.injectorBottom !== firstBands.bottom ||
+          bands.rightIn(0, H) !== firstBands.right
+        ) {
+          bandsStill = false;
+        }
+      }
+      // What a flight may do to the picture is measured on the *rails*, not on the cards:
+      // the cards are not on screen while the camera is moving (`main.ts` — coming out of a
+      // zoomed view the machine covers the window and there is nowhere beside it to be), and
+      // `check:page` is what asserts that, since it is a fact about the DOM.
+      void boxes;
+      const clearance = Math.min(
+        ringLeftIn(0, H) - (OVERLAY_PADDING + READOUT_COLUMN),
+        W - (OVERLAY_PADDING + READOUT_COLUMN) - ringRightIn(0, H),
+      );
+      if (clearance < worstClearance) {
+        worstClearance = clearance;
+        worstPair = `${a} → ${b}`;
+      }
+    }
+    check(`the camera lands at ${b} from ${a}`, !r.flying && r.view === b);
+  }
+
+  check(
+    'a flight takes about as long as it says',
+    framesFlown >= pairs.length * 40 && framesFlown <= pairs.length * 50,
+    `${(framesFlown / pairs.length).toFixed(0)} frames of 45, each`,
+  );
+  check('and it moves one way only, never overshooting the zoom', zoomMonotonic);
+  check(
+    'the overlay does not move while the camera does',
+    bandsStill,
+    'the bands are sampled along the whole flight and fixed for the whole of it',
+  );
+  // The one thing a flight is allowed to do that a landed camera is not: pass under the
+  // rails. It is a translucent column and a moving picture, it lasts three quarters of a
+  // second, and the alternative is either hiding the readouts or refusing to move the camera
+  // at all. What is measured here is how far it goes, so the next session can see it change.
+  console.log(`   flights pass the rails by ${(-worstClearance).toFixed(0)} px at worst, on ${worstPair}`);
+
+  // A comet is a screen-space trail kept across frames, so a camera that moves has to drop
+  // it — the same smear `clearBeamTrail` exists to prevent when a bunch reappears elsewhere.
+  fillCollider(w);
+  for (let i = 0; i < 60; i++) w.advance(1 / 60);
+  r.setView('complex');
+  r.resize(w, CHROME, 1 / 60);
+  ctx.strokes.length = 0;
+  let longest = 0;
+  for (let i = 0; i < 60 && (i === 0 || r.flying); i++) {
+    r.resize(w, CHROME, 1 / 60);
+    w.advance(1 / 60);
+    drawFrame(w);
+  }
+  for (const s of ctx.strokes) {
+    for (let i = 1; i < s.points.length; i++) {
+      const [x1, y1] = s.points[i - 1];
+      const [x2, y2] = s.points[i];
+      longest = Math.max(longest, Math.hypot(x2 - x1, y2 - y1));
+    }
+  }
+  check(
+    'and no comet is smeared across the picture by the camera moving',
+    longest < 100,
+    `longest segment ${longest.toFixed(1)} px`,
+  );
 }
 
 console.log(failures === 0 ? '\nall render checks passed' : `\n${failures} render check(s) FAILED`);
