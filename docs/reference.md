@@ -69,14 +69,19 @@ labels drawn        LABEL_SPACING_MIN = 56 px between neighbours round a ring. O
 narrow layout at 390x844   machine 294 px across (width-limited: a ring is square and a
        phone is tall, so the vertical slack is what lets the sheet open for almost nothing);
        stacked up from the bottom edge: places strip 390x40, sheet on it (folded to its tabs
-       and one peek line, 34 vh open), the console on that at three rows and 110 px, the
-       machine above all of it; readouts 366 px of the sheet's 366; event display 320 px, the
+       and one peek line, 34 vh open), the console on that at three rows and 151 px, the
+       machine above all of it — which costs the picture nothing, because it is width-limited
+       here and the slack it eats was dead space; readouts 366 px of the sheet's 366; event display 320 px, the
        biggest it is drawn anywhere. Smallest tap target 29 px, floor 28
-the console        1180x58 at every window that has room for it, 1069 at 1101 — and the same
+the console        1240x88 at every window with room for it, 1069x88 at 1101 — and the same
        pixels at all six places, which is the point of it: check:page walks the places and
-       compares the desk, every bay, pause and both dumps. The places are 396x31 beside the
-       title. The scope comes off the desk under 1360 px, where the busiest place's keys plus
-       the nameplate plus the dumps want the whole box; the load meter never does
+       compares the desk, every bay, pause and both dumps. Bays: nameplate 136, instruments
+       225 with the tube and 81 without it, the dumps and pause 332, and the keys take the
+       rest — 482 px of room at the narrowest desk against the 456 the busiest place needs,
+       which is the margin the whole layout is tuned to and which check:page measures. The
+       places are 443x35 beside the title, 390x40 along the foot of a phone (all six fit, at
+       30 px of tap). The tube comes off the desk under 1360 px; the dial never does — it is
+       56 px, 240° of sweep, ticks every 24°, amber over the last eighth
 camera views at 1919x906 (magnification against the overview, which is 1.00x):
        SPS 3.64x, ATLAS/CMS 3.35x, TI 2/TI 8 1.31x, LHC 0.96x — the collider already fills
        the overview's height, so its own view is a pan and not a zoom. There is no view of

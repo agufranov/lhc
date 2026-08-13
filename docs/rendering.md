@@ -379,35 +379,59 @@ the COMPUTE panel, because the desk is for things done *to the machine*; a held 
 pointer events, because a finger produces `pointerdown` and the synthesised mouse events never
 arrive for a hold.
 
-### Why it looks like a desk
+### It is a panel, not a toolbar
 
-A machine you can quench should not be operated through something that reads like a toolbar.
-The keys are physical — bevel, engraved caption, and **a lamp on each that is dark exactly when
-pressing it would do nothing**, which is the greying rule made visible instead of merely
-tooltipped. Beside them are the three instruments the readouts cannot be glanced at for, and
-**every one of them is read off the world**; there is nothing on this desk that is decoration
-only:
+A machine you can quench should not be operated through a web page, and the first attempt at
+this was one: rounded translucent buttons with a blur behind them, restyled in console colours
+and still obviously a row of HTML controls. What fixes that is not colour, it is **material and
+depth**, applied to every part at once:
+
+- **The desk is a sheet of steel.** Opaque — not translucent, not blurred — with a hard
+  highlight along the top edge where the light is, a brushed grain across the face, four
+  fasteners sunk into the frame, and machined seams between the bays. The picture behind it is
+  blue and made of light; the desk in front is grey and made of metal, and that difference is
+  what stops the two from reading as one surface.
+- **The keys stand on the desk.** Each has a visible body — three pixels of dark under the cap
+  — a lit top bevel, and a press that drives it *down* into the panel. **A key that would do
+  nothing sits below the surface with its lamp out**, which is the greying rule made visible
+  instead of merely tooltipped: dead keys are recessed, live keys are proud.
+- **The dumps are behind hazard tape**, in a well of their own with the striping across its top
+  edge and red caps in it. They are the one pair that ends a fill and the one pair that never
+  folds away, and they should look like it.
+- **The places are lit, not highlighted.** The selected one is an amber lamp with dark
+  lettering — on a desk, which input you are on is a bulb.
+
+The three instruments beside the keys are read off the world; there is nothing here that is
+decoration only:
 
 - **the lamps** — a batch each way round the collider, a ramp running on either machine,
-  collisions being collected, a quench. Read at 6 Hz, not per frame: counting what is in each
-  beam walks the particle array, and an instrument that answers "is there beam" six times a
-  second is telling the truth as fast as anybody can read it.
-- **the load meter** — mean dipole current against nominal, for **the machine this place
-  belongs to** (the injector's at `sps`, the collider's everywhere else), because a desk
-  labelled SPS metering the LHC is a desk that lies. A circuit switched off or quenched carries
-  none and drags the bar down, which is the thing worth seeing without opening POWER.
-- **the scope** (`ui/scope.ts`) — both machines as a fraction of **their own** flat top, over
-  the last 30 s of wall time, sampled four times a second and drawn only on the frames it
-  samples on. Fractions and not GeV, or the SPS would be a flat line one fifteenth of the way
-  up. It is the only thing on screen that shows a ramp as the twenty-minute shape it is, and
-  the only thing on the desk that keeps moving when nothing is being pressed — which is what
-  stops a control panel reading as a toolbar.
+  collisions being collected, a quench. Five bulbs in sockets, arranged as an annunciator block
+  of two rows, which is both the shape the thing has on a real panel and 55 px narrower than
+  one row — and those 55 px are what the busiest place's keys need at the narrow end of the
+  desk. Read at 6 Hz, not per frame: counting what is in each beam walks the particle array,
+  and an instrument that answers "is there beam" six times a second is telling the truth as
+  fast as anybody can read it.
+- **the load dial** — mean dipole current against nominal, for **the machine this place belongs
+  to** (the injector's at `sps`, the collider's everywhere else), because a desk labelled SPS
+  metering the LHC is a desk that lies. A moving-coil meter and not a bar: the eye reads an
+  angle faster than a length, and a needle has a *speed*, which is the whole story of a ramp.
+  240° of sweep, ticks every 24°, and the band over the last eighth is **amber rather than
+  red** — the end of this scale is nominal current and a collider at flat top is supposed to be
+  sitting on it, so a red zone there would be an alarm that is lit whenever the machine works.
+  Red is for over nominal, which lights the case.
+- **the tube** (`ui/scope.ts`) — both machines as a fraction of **their own** flat top over the
+  last 30 s of wall time, sampled four times a second and drawn only on the frames it samples
+  on. Fractions and not GeV, or the SPS would be a flat line one fifteenth of the way up. Green
+  phosphor with a bloom, a graticule, its own legend and scan lines, in a bezel. It is the only
+  thing on screen that shows a ramp as the twenty-minute shape it is, and the only thing on the
+  desk that keeps moving when nothing is being pressed — which is what stops a control panel
+  reading as a toolbar.
 
-**The scope is what gets sacrificed on a narrow desk.** Under 1360 px the busiest place's keys
+**The tube is what gets sacrificed on a narrow desk.** Under 1360 px the busiest place's keys
 plus the nameplate plus the dumps already want the whole box, and a clipped key is a key that is
-not there, where a trace nobody can see costs nothing. The meter stays: it is 84 px and it is
-the one instrument that says a circuit has gone. Both halves of that are asserted, at 1440 and
-at 1101.
+not there, where a trace nobody can see costs nothing. The dial stays at every size, phone
+included: it is the one instrument that says a circuit has gone. Both halves of that are
+asserted, at 1440 and at 1101.
 
 ## What a control may be greyed out for
 

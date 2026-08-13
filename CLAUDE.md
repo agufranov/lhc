@@ -210,9 +210,9 @@ src/render/
   eventDisplay.ts  the r-phi event display, into an experiment's own canvas
   spectrum.ts    a mass spectrum, into the run panel's canvas
 src/ui/          hud.ts, eventPanel.ts, readout.ts, format.ts
-  controls.ts    the console: the place's nameplate and lamps, its keys, the instruments,
-                 the dumps — plus the strip of places, which is deliberately not on it
-  scope.ts       the console's oscilloscope: both machines' energies over the last 30 s
+  controls.ts    the console: the place's nameplate and lamps, its keys, the dial, the dumps
+                 — plus the strip of places, which is deliberately not on it
+  scope.ts       the console's cathode-ray tube: both machines' energies over the last 30 s
   layout.ts      where every overlay box goes, worked out against the camera
   sheet.ts       the narrow layout: the readouts folded into a sheet along the bottom
 scripts/         check.ts, render-check.ts, dump-diag.ts (where a dumped batch really died)
@@ -258,6 +258,10 @@ argued in the page named beside it.
 - **The console never changes size, and the places are not on it.** Every bay of the desk is a
   fixed width and the camera's places are their own strip, because a box that resizes when the
   place changes moves every control in it — including the dumps. → `rendering.md`
+- **The desk is a panel, not a toolbar**: opaque steel, keys that stand on it and go down when
+  pressed, dead keys recessed with their lamps out, the dumps behind hazard tape, and a
+  moving-coil dial and a cathode-ray tube for instruments — all read off the world, none of it
+  decoration. → `rendering.md`
 - **Anything the user can see is asserted** — in `check:render` if it is drawn, in
   `check:page` if it is placed. → this page, above.
 - **The camera has named places and moves between them smoothly**, and moving it changes

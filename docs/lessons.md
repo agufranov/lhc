@@ -257,6 +257,14 @@ None of these threw. All of them looked like broken physics.
   needed: controls carry a `data-control` key that does not change with their wording, and the
   driver's `mustPress` throws rather than returning `false` into nobody's hands. **A driver
   that can fail silently is worse than no driver**, because its output looks like a pass.
+- **A grid item's automatic minimum size overrides its `width`.** The desk is
+  `width: min(1240px, 100%)` and it still grew — measured at 1069, 1084 and 1152 px for three
+  different places at the same window size, which is precisely the jumping the fixed width was
+  there to stop. `min-width` on a grid item defaults to `auto`, which resolves to the item's
+  *min-content* width, and the keys of the busiest place are wider than the window. `min-width:
+  0` is the whole fix, and the bay clips instead — which is what `overflow: hidden` on it is
+  for. The same trap has a flex twin and this file already had that one; it is the container
+  that differs, not the mistake.
 - **A strip of tabs cannot share a box with a cluster that changes size.** The camera's places
   were the first row of the button bar and the selected place's controls the second — one key at
   `complex`, four at the injector, a caption and three at an interaction point — so the box was

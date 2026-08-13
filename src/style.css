@@ -523,9 +523,9 @@ body {
 }
 
 /* =======================================================================================
-   The console, and the strip of places above the picture.
+   The console.
 
-   Two rules hold this together, and both are measured rather than asserted in prose:
+   Three rules hold this together, and the first two are measured rather than argued:
 
    · **The desk never changes size.** Its height is load-bearing — `main.ts` measures it every
      frame and the camera is fitted inside it — and a desk that grew or shrank as the place
@@ -539,19 +539,33 @@ body {
      six, and they belong beside the name of the thing — which is where they are on a desktop.
      On a phone they are fixed to the very bottom of the window, under the sheet, where a
      thumb is. See `ui/controls.ts`.
+
+   · **It is a panel, not a toolbar.** Everything below is one decision made over and over:
+     the desk is a sheet of steel with a light on its top edge, the keys stand *above* it on
+     bodies you can see and go down when pressed, the dead ones sit *below* it, the instruments
+     are a moving-coil meter and a cathode-ray tube rather than two more rounded rectangles,
+     and the two keys that dump the beam live in a well behind hazard tape. None of it is
+     translucent and none of it is blurred: the machine behind is blue and made of light, the
+     desk in front is grey and made of metal, and the difference is what stops the two reading
+     as one surface. A machine you can quench should not be operated through a web page.
    ======================================================================================= */
 
-/* The strip of places, in the title block. Navigation, not command: a strip of names rather
-   than a row of keys, which is what keeps it from reading as more console. */
+/* The strip of places, in the title block: a bank of selector keys on their own rail. The
+   selected one is *lit* rather than merely highlighted — on a desk, which one you are on is a
+   lamp. */
 .places {
   display: flex;
   align-items: center;
   align-self: center;
   gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: rgba(8, 14, 24, 0.5);
+  padding: 3px;
+  border: 1px solid #04060a;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #171d25, #0b0f14);
+  box-shadow:
+    inset 0 1px 0 rgba(180, 210, 245, 0.09),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(150, 185, 225, 0.07);
   pointer-events: auto;
 }
 
@@ -560,25 +574,32 @@ body {
   align-items: center;
   gap: 6px;
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  padding: 5px 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #8ba3bd;
+  background: linear-gradient(180deg, #2c343e, #1b212a);
+  border: 1px solid #05070a;
+  border-radius: 2px;
+  padding: 6px 9px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7);
+  box-shadow: inset 0 1px 0 rgba(200, 228, 255, 0.14);
 }
 
 .control--tab:hover {
-  color: var(--text);
-  background: rgba(40, 70, 110, 0.35);
+  color: #dce9f7;
+  background: linear-gradient(180deg, #3a4553, #232b36);
 }
 
 .control--tab.is-current {
-  color: #e8f2ff;
-  background: rgba(60, 110, 170, 0.5);
-  border-color: rgba(120, 180, 240, 0.4);
+  color: #1a1206;
+  background: linear-gradient(180deg, #ffd280, #e08a1e);
+  border-color: #7a4a08;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 250, 235, 0.6),
+    0 0 10px rgba(255, 176, 60, 0.45);
 }
 
 /* Whether there is anything to look at over there. Never a reason to grey a place out — see
@@ -588,137 +609,195 @@ body {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9);
   flex: none;
 }
 
 .dot--live {
   background: #4ea8ff;
+  box-shadow: 0 0 6px rgba(78, 168, 255, 0.9);
 }
 
 .dot--hot {
   background: var(--hot);
-  box-shadow: 0 0 6px rgba(255, 179, 92, 0.9);
+  box-shadow: 0 0 6px rgba(255, 179, 92, 0.95);
+}
+
+.is-current .dot {
+  box-shadow: inset 0 1px 1px rgba(90, 55, 5, 0.8);
+  background: rgba(90, 55, 5, 0.45);
+}
+
+.is-current .dot--live,
+.is-current .dot--hot {
+  background: #23303d;
+  box-shadow: 0 0 5px rgba(20, 30, 40, 0.6);
 }
 
 /* --- the desk itself ------------------------------------------------------------------ */
 
 .controls {
+  position: relative;
   grid-row: 3;
   pointer-events: auto;
   justify-self: center;
   align-self: end;
   /* Fixed, and wide enough for the busiest place. Nothing on this desk is allowed to move
      when another place is selected, so the box may not shrink to its contents. */
-  width: min(1180px, 100%);
-  min-height: 58px;
+  width: min(1240px, 100%);
+  /* **A grid item's automatic minimum size is its min-content width**, and it overrides the
+     `width` above: with the keys of the busiest place inside, the desk grew past the window
+     rather than letting the bay clip — measured at 1069, 1084 and 1152 px for three different
+     places, which is exactly the jumping this whole design is against. */
+  min-width: 0;
+  min-height: 84px;
   display: flex;
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0;
-  padding: 8px 10px;
-  border-radius: 12px;
-  /* Brushed metal under glass: a flat fill reads as a toolbar, and this is a desk. */
+  padding: 9px 22px;
+  /* Barely rounded: it is a panel bolted into a desk, not a card. */
+  border-radius: 4px;
+  border: 1px solid #04060a;
+  /* Rolled steel: a hard highlight along the top edge where the light is, a long dark fall to
+     the bottom, and a brushed grain across it. */
   background:
-    linear-gradient(180deg, rgba(24, 34, 50, 0.92), rgba(9, 15, 25, 0.95)),
-    repeating-linear-gradient(90deg, rgba(190, 220, 255, 0.016) 0 2px, transparent 2px 5px);
-  border: 1px solid var(--border);
-  border-top-color: rgba(140, 190, 240, 0.3);
+    linear-gradient(180deg, #4a5764 0%, #2b333d 6%, #222933 55%, #171d24 100%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 3px);
   box-shadow:
-    inset 0 1px 0 rgba(180, 215, 255, 0.09),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
-    0 4px 14px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
+    inset 0 1px 0 rgba(215, 235, 255, 0.3),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.8),
+    0 8px 24px rgba(0, 0, 0, 0.75);
 }
 
-/* One bay of the desk, with an engraved seam between it and the next. */
+/* Fasteners. Two columns of two, sunk into the frame either side of the bays — the cheapest
+   line in this file and the one that does the most to say the thing is bolted down. */
+.controls::before,
+.controls::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  width: 9px;
+  background-image:
+    radial-gradient(circle 3.5px at 50% 7px, #39434f 0 40%, #10151b 55%, #05070a 100%),
+    radial-gradient(circle 3.5px at 50% calc(100% - 7px), #39434f 0 40%, #10151b 55%, #05070a 100%);
+  background-repeat: no-repeat;
+}
+
+.controls::before {
+  left: 7px;
+}
+
+.controls::after {
+  right: 7px;
+}
+
+/* One bay of the desk, with a machined seam between it and the next. */
+/* One bay of the desk, with a machined seam between it and the next. The padding is 8 and not
+   12 because the keys of the busiest place are 456 px and the bay they stand in has 482 at the
+   narrowest desk this layout draws — the four bays' padding is where those pixels came from,
+   and `check:page` is what noticed they were missing. */
 .deck-bay {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  min-height: 38px;
+  gap: 7px;
+  padding: 0 8px;
+  min-height: 62px;
 }
 
 .deck-bay + .deck-bay {
-  border-left: 1px solid rgba(0, 0, 0, 0.55);
-  box-shadow: inset 1px 0 0 rgba(150, 195, 245, 0.07);
+  border-left: 1px solid #04060a;
+  box-shadow: inset 1px 0 0 rgba(200, 228, 255, 0.16), inset 3px 0 5px rgba(0, 0, 0, 0.45);
 }
 
-/* The nameplate: which place this desk is wired to, and its lamps. A fixed width, because
-   the names are `complex` and `TI 2 · TI 8` and everything to the right of it would move. */
+/* The nameplate: which place this desk is wired to, and its lamps. A fixed width, because the
+   names are `complex` and `TI 2 · TI 8` and everything to the right of it would move. */
 .deck-plate {
   flex: none;
-  /* Wide enough for five lamps and their captions: they overflowed a 132 px plate and QNC —
-     the one that matters most — was the letter that went under the seam. `check:page` walks
-     the desk at the narrowest window that has one and would catch it again. */
-  width: 152px;
+  width: 136px;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
 }
 
+/* Engraved, not printed: cut into a plate screwed to the desk, so it is darker than the metal
+   with the light catching the bottom of the groove. */
 .deck-name {
   font-size: 11px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #cfe4fb;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+  color: #b9cee4;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.95), 0 1px 0 rgba(190, 220, 255, 0.14);
+  padding: 3px 7px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #0c1015, #151b23);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(170, 205, 245, 0.12);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 
+/* An annunciator block: five lamps in two rows rather than one long row. It is the shape the
+   thing is on a real panel, and it is also 55 px narrower — which is 55 px the keys of the
+   busiest place need at the narrow end of the desk. */
 .deck-lamps {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 4px 8px;
   align-items: center;
-  gap: 6px;
 }
 
 .lamp {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   font-size: 8px;
-  letter-spacing: 0.06em;
-  color: rgba(140, 165, 195, 0.75);
+  letter-spacing: 0.08em;
+  color: rgba(150, 175, 205, 0.8);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8);
 }
 
-/* Dark is a state, and the common one: an unlit bulb is a recess with nothing behind it. */
+/* A bulb in a socket. Dark is a state, and the common one: unlit, it is a recess with nothing
+   behind it, which is what makes the lit ones read as *on* rather than as coloured. */
 .lamp-bulb {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: rgba(10, 16, 26, 0.9);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(120, 160, 210, 0.22);
+  background: radial-gradient(circle at 36% 30%, #262e39, #080b0f 75%);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 0 1px #04060a,
+    0 0 0 2px rgba(150, 180, 215, 0.1);
 }
 
 .lamp-bulb.is-live {
-  background: #4ea8ff;
-  box-shadow: 0 0 6px rgba(78, 168, 255, 0.85), 0 0 0 1px rgba(120, 180, 240, 0.4);
+  background: radial-gradient(circle at 36% 30%, #d3ecff, #2b86d8 70%);
+  box-shadow: 0 0 9px 1px rgba(78, 168, 255, 0.85), 0 0 0 1px #04060a, 0 0 0 2px rgba(150, 180, 215, 0.14);
 }
 
 .lamp-bulb.is-ok {
-  background: #57e39a;
-  box-shadow: 0 0 6px rgba(87, 227, 154, 0.85), 0 0 0 1px rgba(120, 240, 180, 0.4);
+  background: radial-gradient(circle at 36% 30%, #d8ffe9, #23b56e 70%);
+  box-shadow: 0 0 9px 1px rgba(87, 227, 154, 0.8), 0 0 0 1px #04060a, 0 0 0 2px rgba(150, 215, 180, 0.14);
 }
 
 .lamp-bulb.is-hot {
-  background: var(--hot);
-  box-shadow: 0 0 7px rgba(255, 179, 92, 0.95), 0 0 0 1px rgba(255, 200, 130, 0.45);
+  background: radial-gradient(circle at 36% 30%, #ffe9c0, #e08a1e 70%);
+  box-shadow: 0 0 10px 1px rgba(255, 179, 92, 0.9), 0 0 0 1px #04060a, 0 0 0 2px rgba(230, 190, 130, 0.16);
 }
 
 .lamp-bulb.is-warn {
-  background: #ff5a48;
-  box-shadow: 0 0 8px rgba(255, 90, 72, 0.95), 0 0 0 1px rgba(255, 140, 120, 0.5);
+  background: radial-gradient(circle at 36% 30%, #ffd6cd, #d8291a 70%);
+  box-shadow: 0 0 12px 2px rgba(255, 60, 40, 0.9), 0 0 0 1px #04060a, 0 0 0 2px rgba(240, 150, 130, 0.2);
   animation: lamp-alarm 0.8s steps(2, end) infinite;
 }
 
 @keyframes lamp-alarm {
   0% { opacity: 1; }
-  100% { opacity: 0.35; }
+  100% { opacity: 0.3; }
 }
 
 /* The place's own keys. The one bay that changes, and the only one that may take the slack. */
@@ -732,52 +811,121 @@ body {
 
 .deck-gauges {
   flex: none;
-  gap: 10px;
+  gap: 12px;
 }
 
-.deck-meter {
-  width: 84px;
+/* A moving-coil meter: a needle over a scale, in a case, under glass. Not a bar — the eye
+   reads an angle faster than a length, and a needle has a *speed*, which is the whole story
+   of a ramp. `ui/controls.ts` sets one thing on it, the angle. */
+.deck-dial {
   flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
 }
 
-.meter-track {
-  height: 7px;
-  border-radius: 2px;
-  background: rgba(6, 10, 18, 0.85);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(120, 160, 210, 0.18);
-  overflow: hidden;
+.dial-face {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 32%, #1b222b 0%, #0b0f14 72%);
+  box-shadow:
+    inset 0 0 0 2px #05070a,
+    inset 0 2px 7px rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(175, 210, 245, 0.16);
 }
 
-/* Segments, not a smear: a bargraph on a desk is a column of lamps, and reading one is
-   counting how many are lit. Nominal current is the end of the track and there is nothing
-   above it, so a bar short of the end means a circuit is off, quenched, or still ramping. */
-.meter-fill {
-  height: 100%;
-  width: 0;
+/* The scale: ticks every 24° over a 240° sweep, a band over the last eighth of it, and the
+   unused wedge filled back in with the face. Masked to an annulus, or a conic gradient would
+   paint the whole disc.
+
+   **The band is amber and not red**, because the end of this scale is nominal current and a
+   collider at flat top is *supposed* to be sitting on it — a red zone there would be an alarm
+   that is on whenever the machine is working. Red is for `.is-over`, which is a fault. */
+.dial-face::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 60%),
-    repeating-linear-gradient(90deg, #58c8f5 0 4px, rgba(6, 10, 18, 0.85) 4px 6px);
-  box-shadow: 0 0 6px rgba(88, 200, 245, 0.5);
-  transition: width 0.2s linear;
+    conic-gradient(from 120deg, #0b0f14 0 120deg, transparent 120deg),
+    repeating-conic-gradient(from -120deg, rgba(235, 245, 255, 0.95) 0 2.4deg, transparent 2.4deg 24deg),
+    conic-gradient(from 91deg, rgba(224, 160, 32, 0.95) 0 29deg, transparent 29deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 0 54%, #000 58%);
+  mask-image: radial-gradient(circle, transparent 0 54%, #000 58%);
 }
 
-.meter-caption {
-  font-size: 8.5px;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  padding-top: 3px;
+.dial-needle {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 2.5px;
+  height: 40%;
+  transform-origin: 50% 100%;
+  transform: translateX(-50%) rotate(-120deg);
+  background: linear-gradient(180deg, #ffc266 0%, #e08a1e 60%, #7b4a0d 100%);
+  box-shadow: 0 0 6px rgba(255, 176, 60, 0.7);
+  /* It swings, and swinging is half of what a needle is for. */
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.dial-hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #48535f, #12171d);
+  box-shadow: 0 0 0 1px #04060a, 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+/* The glass over it. One highlight across the top left, which is what says there is something
+   in front of the needle. */
+.dial-glass {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(220, 240, 255, 0.13) 0 32%, transparent 55%);
+  pointer-events: none;
+}
+
+/* Over nominal is a state, not a number: the case lights rather than the needle going
+   somewhere there is no scale for. */
+.dial-face.is-over {
+  box-shadow:
+    inset 0 0 0 2px #5a1410,
+    inset 0 2px 7px rgba(0, 0, 0, 0.85),
+    0 0 10px rgba(216, 41, 26, 0.55);
+}
+
+.dial-caption {
+  font-size: 7.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(150, 175, 205, 0.8);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8);
 }
 
-/* The scope. Sized here and drawn in `ui/scope.ts`; the backing store follows this box. */
+/* The tube. Sized here and drawn in `ui/scope.ts`, which puts the graticule, the two traces,
+   their legend and the scan lines on it; this is the bezel it is set into. */
 .deck-scope {
   display: block;
   flex: none;
-  width: 120px;
-  height: 30px;
-  border-radius: 3px;
-  box-shadow: inset 0 0 0 1px rgba(90, 200, 190, 0.22), inset 0 2px 6px rgba(0, 0, 0, 0.8);
+  width: 132px;
+  height: 52px;
+  border-radius: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(109, 251, 168, 0.16),
+    inset 0 0 14px rgba(0, 255, 140, 0.07),
+    0 0 0 3px #11161c,
+    0 0 0 4px #04060a,
+    0 1px 0 rgba(175, 210, 245, 0.14);
 }
 
 /* --- the keys ------------------------------------------------------------------------- */
@@ -788,106 +936,147 @@ body {
   color: var(--text);
 }
 
-/* A key, not a button: it stands proud of the desk, it goes down when it is pressed, and it
-   carries its own lamp — lit when pressing it would do something, dark when it would not. */
+/* A key, not a button. It has a *body* — the 3 px of dark under it — so it stands above the
+   desk, and pressing it drives it down into the panel. The lamp on it is lit exactly when
+   pressing it would do something, which is the greying rule made visible. */
 .control--button {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  height: 32px;
+  padding: 0 8px;
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #dbe9fa;
-  background: linear-gradient(180deg, rgba(52, 72, 98, 0.95), rgba(22, 33, 50, 0.95));
-  border: 1px solid rgba(120, 160, 210, 0.22);
-  border-top-color: rgba(170, 210, 250, 0.35);
-  border-radius: 5px;
-  padding: 6px 9px;
+  color: #e9f2fb;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.85);
+  background: linear-gradient(180deg, #8592a1 0%, #58636f 12%, #3b4450 80%, #2b333d 100%);
+  border: 1px solid #04060a;
+  border-radius: 3px;
   cursor: pointer;
   white-space: nowrap;
   box-shadow:
-    inset 0 1px 0 rgba(200, 228, 255, 0.16),
-    0 1px 0 rgba(0, 0, 0, 0.55),
-    0 2px 4px rgba(0, 0, 0, 0.35);
-  transition: background 0.12s, border-color 0.12s;
+    inset 0 1px 0 rgba(235, 246, 255, 0.45),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.45),
+    0 3px 0 #0a0e13,
+    0 5px 8px rgba(0, 0, 0, 0.6);
 }
 
 .control--button:hover {
-  background: linear-gradient(180deg, rgba(72, 104, 144, 0.95), rgba(30, 46, 70, 0.95));
-  border-color: rgba(150, 200, 245, 0.4);
+  background: linear-gradient(180deg, #9dabbb 0%, #6a7684 12%, #47525f 80%, #353e4a 100%);
 }
 
+/* Down into the panel, and the body goes with it. */
 .control--button:active {
-  transform: translateY(1px);
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.65);
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.8),
+    0 0 0 #0a0e13,
+    0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-/* The greying rule, made visible: the lamp on a key that would do nothing is out. */
 .key-led {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   flex: none;
   border-radius: 50%;
-  background: #7fd8ff;
-  box-shadow: 0 0 5px rgba(127, 216, 255, 0.8);
+  background: radial-gradient(circle at 36% 30%, #ffe8bd, #ffab33 70%);
+  box-shadow: 0 0 8px rgba(255, 171, 51, 0.9), 0 0 0 1px #04060a;
 }
 
 .control--dump .key-led {
-  background: #ff8a6a;
-  box-shadow: 0 0 5px rgba(255, 138, 106, 0.8);
+  background: radial-gradient(circle at 36% 30%, #ffd9cf, #ff5236 70%);
+  box-shadow: 0 0 8px rgba(255, 82, 54, 0.9), 0 0 0 1px #04060a;
 }
 
-/* pressing it would do nothing at all — the key says why on hover, which is why it is this
-   and not `disabled`: a disabled button fires no mouse events and shows no tooltip */
+/* Pressing it would do nothing at all, so the key is **down in the desk** rather than standing
+   on it, and its lamp is out. It is not `disabled`: a disabled button fires no mouse events
+   and shows no tooltip, and the tooltip is where the reason is. */
 .control--blocked,
 .control--blocked:hover {
-  background: linear-gradient(180deg, rgba(34, 44, 60, 0.8), rgba(18, 25, 38, 0.9));
-  border-color: rgba(90, 110, 140, 0.25);
-  border-top-color: rgba(110, 135, 170, 0.25);
-  color: var(--muted);
+  background: linear-gradient(180deg, #262d36 0%, #191f27 60%, #141920 100%);
+  color: #5f6d7f;
+  text-shadow: 0 1px 0 rgba(190, 215, 245, 0.06);
   cursor: not-allowed;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.75),
+    0 1px 0 rgba(160, 195, 235, 0.06);
 }
 
 .control--blocked .key-led {
-  background: rgba(10, 16, 26, 0.9);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(90, 110, 140, 0.3);
+  background: radial-gradient(circle at 36% 30%, #232a33, #090c11 75%);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 0 1px #04060a;
 }
 
-/* One place's keys. Empty for the places that are only worth looking at, and an empty
-   cluster must not draw its own separators. */
+/* One place's keys. Empty for the places that are only worth looking at, and an empty cluster
+   must not draw its own separators. */
 .control--cluster:empty {
   display: none;
 }
 
-/* The one action that is never folded away, and is not a navigation away from wherever you
-   are. It says so by being the only warm thing on the desk. */
+/* --- the two that dump the beam ------------------------------------------------------- */
+
+/* Behind hazard tape, in a well of their own: the one pair on this desk that ends a fill, and
+   the only pair that is never folded away whatever place is selected. */
+.control--dump {
+  position: relative;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 9px 7px;
+  border: 1px solid #04060a;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(44, 15, 12, 0.85), rgba(14, 8, 8, 0.9));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 120, 90, 0.09),
+    inset 0 3px 7px rgba(0, 0, 0, 0.75);
+}
+
+.control--dump::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 4px;
+  background: repeating-linear-gradient(45deg, #d8a418 0 5px, #17140d 5px 10px);
+  opacity: 0.85;
+}
+
+.control--dump .caption {
+  color: #e8b23c;
+}
+
 .control--dump .control--button {
-  background: linear-gradient(180deg, rgba(112, 48, 44, 0.95), rgba(52, 22, 22, 0.95));
-  border-color: rgba(200, 110, 90, 0.32);
-  border-top-color: rgba(255, 150, 120, 0.4);
-  color: #ffd8cd;
+  background: linear-gradient(180deg, #cf5749 0%, #973024 14%, #5a1712 86%, #3f100c 100%);
+  color: #ffe4dc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 210, 195, 0.35),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.5),
+    0 3px 0 #160706,
+    0 4px 7px rgba(0, 0, 0, 0.6);
 }
 
 .control--dump .control--button:hover {
-  background: linear-gradient(180deg, rgba(158, 62, 54, 0.95), rgba(74, 28, 26, 0.95));
-  border-color: rgba(255, 140, 110, 0.5);
+  background: linear-gradient(180deg, #e56a58 0%, #b03a2c 14%, #6d1d16 86%, #4c1410 100%);
 }
 
 /* a captioned group, so five actions do not read as one row of five */
 .control--group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
 }
 
 .control .caption {
-  color: var(--muted);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  color: rgba(150, 175, 205, 0.75);
+  font-size: 8px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8);
 }
 
 .control .value {
@@ -911,11 +1100,11 @@ select {
   padding: 4px 6px;
 }
 
-/* **The scope is the first thing off a narrow desk.** Between the phone breakpoint and about
+/* **The tube is the first thing off a narrow desk.** Between the phone breakpoint and about
    1360 px the keys of the busiest place plus the nameplate plus the dumps already want the
-   whole box, and a key that has been clipped is a key that is not there — where a trace
-   nobody can see costs nothing. The meter stays: it is 84 px and it is the one instrument
-   that says a circuit has gone. `check:page` measures both ends of this. */
+   whole box, and a key that has been clipped is a key that is not there — where a trace nobody
+   can see costs nothing. The dial stays: it is 52 px and it is the one instrument that says a
+   circuit has gone. `check:page` measures both ends of this. */
 @media (max-width: 1360px) {
   .deck-scope {
     display: none;
@@ -1014,11 +1203,16 @@ select {
     display: none;
   }
 
+  /* All six on a 390 px screen, which they do fit — just. The strip still scrolls and still
+     says so with its fade, but a place you have to drag the rail to find is a place that is
+     one press further away than it should be. */
   .control--tab {
     flex: none;
     /* A finger, not a pointer. */
-    padding: 8px 8px;
-    font-size: 10.5px;
+    padding: 9px 6px;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    gap: 4px;
   }
 
   /* **Three rows, each of which fits**, and the desk is the same three whatever place is
@@ -1038,16 +1232,22 @@ select {
     justify-self: stretch;
     width: 100%;
     min-height: 0;
+    /* No room for fasteners down the sides of a 390 px panel. */
+    padding: 7px 8px;
     /* The sheet and the places strip are both fixed to the bottom of the window and the desk
        is in the overlay's grid, so it has to be lifted clear of however tall the two of them
        currently are. `main.ts` publishes both. Without this the phone had no visible controls
        at all. */
     margin-bottom: calc(var(--sheet-height, 0px) + var(--places-height, 0px));
-    padding: 6px;
-    gap: 6px;
-    border-radius: 10px;
+    gap: 7px;
+    border-radius: 4px;
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .controls::before,
+  .controls::after {
+    display: none;
   }
 
   /* A label that wraps makes the whole desk a row taller. */
@@ -1060,6 +1260,7 @@ select {
   .deck-bay {
     padding: 0;
     min-height: 0;
+    gap: 8px;
   }
 
   .deck-bay + .deck-bay {
@@ -1084,8 +1285,22 @@ select {
     margin-left: auto;
   }
 
-  .deck-meter {
-    width: 76px;
+  /* The dial is smaller on a phone and keeps its needle: it is the one instrument that says a
+     circuit has gone, and a bar in its place would be a web page's idea of a meter. */
+  .dial-face {
+    width: 40px;
+    height: 40px;
+  }
+
+  .dial-hub {
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 -3px;
+  }
+
+  .deck-dial {
+    flex-direction: row;
+    gap: 6px;
   }
 
   .deck-keys {
@@ -1119,7 +1334,14 @@ select {
   }
 
   .control--button {
-    padding: 8px 9px;
+    height: 32px;
+    padding: 0 9px;
+  }
+
+  /* The well the dumps stand in keeps its hazard tape and loses its padding: on a phone it is
+     the whole right-hand end of a row rather than a block on a desk. */
+  .control--dump {
+    padding: 9px 7px 6px;
   }
 
   /* The two experiments' cards are not placed beside the machine here — there is no beside.

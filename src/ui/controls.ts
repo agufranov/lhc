@@ -97,11 +97,11 @@ export class Controls {
   /** Every control that says something shorter on a narrow screen. */
   private labels: Array<{ el: HTMLElement; long: string; short: string }> = [];
   private compact = false;
-  /** The nameplate, the lamps beside it, and the dipole load meter. */
+  /** The nameplate, the lamps beside it, and the dipole load dial. */
   private plate: HTMLElement;
   private plateName = '';
   private lamps: LampView[] = [];
-  private meter: Meter;
+  private dial: Dial;
   private scope: Scope;
   /** The instruments are read at {@link INSTRUMENT_PERIOD}, not at sixty frames a second. */
   private since = 0;
@@ -208,7 +208,7 @@ export class Controls {
 
     // --- the instruments -------------------------------------------------------
     const gauges = bay(root, 'deck-gauges');
-    this.meter = meter(gauges);
+    this.dial = dial(gauges);
     const screen = document.createElement('canvas');
     screen.className = 'deck-scope';
     screen.title =
@@ -348,13 +348,17 @@ export class Controls {
   }
 
   /**
-   * The lamps and the load meter.
+   * The lamps and the dial.
    *
-   * The meter is the dipoles of **the machine this place belongs to** — at the injector it is
+   * The dial is the dipoles of **the machine this place belongs to** — at the injector it is
    * the injector's, everywhere else the collider's — because a desk labelled SPS metering the
    * LHC is a desk that lies. It reads mean circuit current against nominal, so a circuit
-   * switched off or quenched drags it down, which is exactly the thing worth seeing happen
-   * without opening POWER.
+   * switched off or quenched drags the needle down, which is exactly the thing worth seeing
+   * happen without opening POWER.
+   *
+   * A needle and not a bar, and that is not decoration: a moving-coil meter is the instrument
+   * this machine's desk would actually carry, the eye reads an angle faster than it reads a
+   * length, and a needle that swings has a *speed* — which is the whole story of a ramp.
    */
   private instruments(world: World, view: ViewId): void {
     for (const l of this.lamps) {
@@ -364,16 +368,19 @@ export class Controls {
       l.dot.className = state ? `lamp-bulb is-${state}` : 'lamp-bulb';
     }
     const machine = view === 'sps' ? world.injector : world.collider;
-    const load = Math.max(0, Math.min(1.2, machine.telemetry().load));
-    const width = `${(Math.min(load, 1) * 100).toFixed(0)}%`;
-    if (width !== this.meter.width) {
-      this.meter.width = width;
-      this.meter.fill.style.width = width;
+    const load = Math.max(0, Math.min(1.15, machine.telemetry().load));
+    const angle = (-DIAL_SWEEP / 2 + Math.min(load, 1.08) * DIAL_SWEEP).toFixed(1);
+    if (angle !== this.dial.angle) {
+      this.dial.angle = angle;
+      this.dial.needle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+      // Over nominal is a state, not a number: the face lights red rather than the needle
+      // going somewhere there is no scale for.
+      this.dial.face.classList.toggle('is-over', load > 1.01);
     }
     const text = `${machine.ring.config.name} ${(load * 100).toFixed(0)}%`;
-    if (text !== this.meter.text) {
-      this.meter.text = text;
-      this.meter.caption.textContent = text;
+    if (text !== this.dial.text) {
+      this.dial.text = text;
+      this.dial.caption.textContent = text;
     }
   }
 
@@ -529,13 +536,17 @@ interface LampView extends LampSpec {
   lit: string;
 }
 
-/** The dipole load meter: a bar, and the number it is a picture of. */
-interface Meter {
-  fill: HTMLElement;
+/** The dipole load dial: a needle, the face it swings over, and the number it is saying. */
+interface Dial {
+  face: HTMLElement;
+  needle: HTMLElement;
   caption: HTMLElement;
-  width: string;
+  angle: string;
   text: string;
 }
+
+/** How far the needle swings between an empty circuit and nominal current [degrees]. */
+const DIAL_SWEEP = 240;
 
 /** A control that is sometimes not worth pressing, and what it says while it is not. */
 interface Block {
@@ -697,23 +708,29 @@ function lamp(root: HTMLElement, spec: LampSpec): LampView {
   return { ...spec, dot, lit: '' };
 }
 
-/** The dipole load meter: how much of nominal current the circuits are actually carrying. */
-function meter(root: HTMLElement): Meter {
+/** The dipole load dial: how much of nominal current the circuits are actually carrying. */
+function dial(root: HTMLElement): Dial {
   const el = document.createElement('div');
-  el.className = 'deck-meter';
+  el.className = 'deck-dial';
   el.title =
     'Mean dipole current against nominal, for the machine this place belongs to. A circuit ' +
-    'switched off or quenched carries none, and drags this down with it.';
-  const track = document.createElement('div');
-  track.className = 'meter-track';
-  const fill = document.createElement('div');
-  fill.className = 'meter-fill';
-  track.append(fill);
+    'switched off or quenched carries none, and drags the needle down with it.';
+  const face = document.createElement('div');
+  face.className = 'dial-face';
+  // The scale is drawn by the stylesheet — ticks and the red zone are one conic gradient each
+  // — and only these two move: the needle, and the glass over it, which does not.
+  const needle = document.createElement('i');
+  needle.className = 'dial-needle';
+  const hub = document.createElement('i');
+  hub.className = 'dial-hub';
+  const glass = document.createElement('i');
+  glass.className = 'dial-glass';
+  face.append(needle, hub, glass);
   const caption = document.createElement('div');
-  caption.className = 'meter-caption';
-  el.append(track, caption);
+  caption.className = 'dial-caption';
+  el.append(face, caption);
   root.append(el);
-  return { fill, caption, width: '', text: '' };
+  return { face, needle, caption, angle: '', text: '' };
 }
 
 /** A place in the strip: a name, and a dot for whether anything is happening there. */

@@ -37,9 +37,17 @@ const SAMPLE_PERIOD = 0.25;
 
 const SAMPLES = Math.round(WINDOW / SAMPLE_PERIOD);
 
-/** The collider's trace, and the injector's. Phosphor, not palette: this is a screen. */
-const COLLIDER = '#5fd2ff';
-const INJECTOR = '#ffb35c';
+/**
+ * The collider's trace, and the injector's.
+ *
+ * **Phosphor, not palette.** This is a cathode-ray tube on the front of a desk, not a plot in
+ * a panel: one green it is made of and one amber for the second beam, both drawn with a bloom
+ * on a nearly black screen, and the graticule ruled underneath them the way a scope's is —
+ * scratched into the glass rather than plotted. The picture of the machine behind the desk is
+ * blue; nothing on the desk is, which is what keeps the two from reading as one surface.
+ */
+const COLLIDER = '#6dfba8';
+const INJECTOR = '#ffc255';
 
 export class Scope {
   private canvas: HTMLCanvasElement;
@@ -92,10 +100,11 @@ export class Scope {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    // The screen itself: a dark well with a graticule ruled on it.
-    ctx.fillStyle = 'rgba(4, 12, 14, 0.9)';
+    // The tube: an almost black screen with a graticule scratched into it, and a green cast
+    // where the phosphor sits.
+    ctx.fillStyle = '#03120a';
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(90, 200, 190, 0.14)';
+    ctx.strokeStyle = 'rgba(109, 251, 168, 0.16)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 1; i < 4; i++) {
@@ -132,6 +141,25 @@ export class Scope {
       ctx.stroke();
     }
     ctx.shadowBlur = 0;
+
+    // Which trace is which, on the tube rather than beside it: a legend in the DOM would be
+    // one more thing to lay out, and a scope's own screen is where a scope says this.
+    ctx.font = '7px ui-monospace, monospace';
+    ctx.textBaseline = 'top';
+    for (const [i, [colour, name]] of ([[COLLIDER, 'LHC'], [INJECTOR, 'SPS']] as const).entries()) {
+      const x = 4 + i * 30;
+      ctx.fillStyle = colour;
+      ctx.fillRect(x, 4.5, 6, 1.5);
+      ctx.globalAlpha = 0.75;
+      ctx.fillText(name, x + 9, 1);
+      ctx.globalAlpha = 1;
+    }
+
+    // Scan lines. A CRT is not a flat fill of light, and one line in two darkened is the whole
+    // of what says so at this size — it is the cheapest thing on the desk and the one that
+    // does the most to stop the screen reading as a rounded rectangle with a graph in it.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    for (let y = 0; y < h; y += 2) ctx.fillRect(0, y, w, 1);
   }
 }
 

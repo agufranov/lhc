@@ -504,23 +504,30 @@ for (const [width, height] of [[1440, 900], [1101, 860]] as Array<[number, numbe
         const px = ctx?.getImageData(0, 0, scope.width, scope.height).data;
         if (px) for (let i = 3; i < px.length; i += 4) if (px[i] > 8) lit++;
       }
-      const fill = document.querySelector('.meter-fill') as HTMLElement | null;
+      // The needle's *angle*, which is the only thing the app sets on the dial: a needle that
+      // has never been written to is still at the transform the stylesheet gave it.
+      const needle = document.querySelector('.dial-needle') as HTMLElement | null;
       return {
         lamps: document.querySelectorAll('.deck-lamps .lamp-bulb').length,
-        meter: fill ? fill.getBoundingClientRect().width : 0,
-        caption: document.querySelector('.meter-caption')?.textContent ?? '',
+        needle: needle ? needle.style.transform : '',
+        caption: document.querySelector('.dial-caption')?.textContent ?? '',
         scope: scope ? scope.getBoundingClientRect().width : 0,
         drawn: lit,
       };
     });
     const wide = width > 1360;
+    // The needle has swung off the peg it is drawn at: at 450 GeV the collider's dipoles carry
+    // about a fifteenth of nominal, which is a few degrees up from -120.
+    const swung = /rotate\((-?[\d.]+)deg\)/.exec(instruments.needle);
     check(
-      `the lamps and the meter are on the desk and reading the machine${wide ? ', and so is the scope' : ' — and the scope has stood down'}`,
+      `the lamps and the dial are on the desk and reading the machine${wide ? ', and so is the scope' : ' — and the scope has stood down'}`,
       instruments.lamps === 5 &&
-        instruments.meter > 0 &&
+        swung !== null &&
+        Number(swung[1]) > -120 &&
+        Number(swung[1]) <= 120 &&
         /\d/.test(instruments.caption) &&
         (wide ? instruments.scope > 40 && instruments.drawn > 200 : instruments.scope === 0),
-      `${instruments.lamps} lamps, meter ${instruments.meter.toFixed(0)} px "${instruments.caption}", ` +
+      `${instruments.lamps} lamps, needle at ${swung ? swung[1] : '?'}° "${instruments.caption}", ` +
         `scope ${instruments.scope.toFixed(0)} px with ${instruments.drawn} lit pixels`,
     );
 
