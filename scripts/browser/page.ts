@@ -117,16 +117,49 @@ export async function open(width: number, height: number, quiet = true): Promise
  * injector's ramp reads `▲ ramp → 450 GeV` and the collider's reads `▼ ramp → 450 GeV`, and
  * only one of the two clusters is ever on screen.
  */
-export async function press(page: Page, label: string): Promise<boolean> {
-  return page.evaluate((text: string) => {
-    const buttons = Array.from(document.querySelectorAll('#controls button')).filter(
+export async function press(page: Page, key: string): Promise<boolean> {
+  return page.evaluate((k: string) => {
+    const hit = Array.from(document.querySelectorAll(`#controls button[data-control="${k}"]`)).find(
       (b) => (b as HTMLElement).offsetParent !== null,
     );
-    const hit = buttons.find((b) => (b.textContent ?? '').trim().includes(text));
     if (!hit) return false;
     (hit as HTMLButtonElement).click();
     return true;
-  }, label);
+  }, key);
+}
+
+/** Presses a control and fails loudly if it was not there to press. */
+export async function mustPress(page: Page, key: string): Promise<void> {
+  if (!(await press(page, key))) {
+    throw new Error(`no visible control "${key}" to press — the bar is not where this expected`);
+  }
+}
+
+/**
+ * Puts a machine's ramp where it is wanted, which a **setpoint** cannot be told twice.
+ *
+ * The ramps are one button each now: it says which way it will go, and pressing it when the
+ * machine is already going that way sends it back the other way. So a driver may not simply
+ * press "flat bottom" to be sure — it reads the setpoint and presses only if it needs to.
+ */
+export async function setRamp(page: Page, machine: 'injector' | 'collider', up: boolean): Promise<void> {
+  const wanted = await page.evaluate(
+    ({ m, want }: { m: 'injector' | 'collider'; want: boolean }) => {
+      const world = (window as unknown as {
+        lhc: {
+          world: Record<'injector' | 'collider', {
+            targetEnergy: number;
+            ring: { config: { topEnergyGeV: number; injectionEnergyGeV: number } };
+          }>;
+        };
+      }).lhc.world;
+      const cfg = world[m].ring.config;
+      const at = Math.abs(world[m].targetEnergy - cfg.topEnergyGeV) < 1e-6;
+      return at !== want;
+    },
+    { m: machine, want: up },
+  );
+  if (wanted) await mustPress(page, `ramp-${machine}`);
 }
 
 /**
@@ -136,14 +169,14 @@ export async function press(page: Page, label: string): Promise<boolean> {
  * tabs swaps at the press, so waiting is not about the buttons — it is about not measuring
  * the overlay while the machine is still moving under it.
  */
-export async function selectView(page: Page, label: string): Promise<boolean> {
-  const hit = await page.evaluate((text: string) => {
-    const tabs = Array.from(document.querySelectorAll('#controls .control--tab'));
-    const found = tabs.find((b) => (b.textContent ?? '').trim().includes(text));
+export async function selectView(page: Page, id: string): Promise<boolean> {
+  const hit = await page.evaluate((view: string) => {
+    const found = document.querySelector(`#controls .control--tab[data-view="${view}"]`);
     if (!found) return false;
     (found as HTMLButtonElement).click();
     return true;
-  }, label);
+  }, id);
+  if (!hit) throw new Error(`no place "${id}" in the bar`);
   await wait(1.1);
   return hit;
 }
@@ -222,30 +255,30 @@ export async function collide(page: Page, settle = 8): Promise<void> {
   // The bar shows one place's controls at a time, so getting a fill into the collider is a
   // walk from machine to machine — which is what it is on the real thing too, and what the
   // tabs are for. See `ui/controls.ts`.
-  await selectView(page, 'SPS');
-  for (const [n, beam] of [['1', '→ LHC beam 1'], ['2', '→ LHC beam 2']] as const) {
+  await selectView(page, 'sps');
+  for (const [n, beam] of [['1', 'to-beam-1'], ['2', 'to-beam-2']] as const) {
     // Back to flat bottom first, explicitly: an SPS sitting at 450 GeV holds the fill —
     // "chain holding, waiting for flat bottom" — and no batch is ever delivered. The ramp is
     // one button that says which way it will go, so this is the same button as the one below.
-    await press(page, 'ramp → 26 GeV');
-    await press(page, 'fill SPS');
+    await setRamp(page, 'injector', false);
+    await mustPress(page, 'fill');
     await until(page, 'panel-injector', (t) => /batches ready\s*[1-9]/.test(t));
-    await press(page, 'ramp → 450 GeV');
+    await setRamp(page, 'injector', true);
     await until(page, 'panel-injector', (t) => t.includes('ready to extract'));
-    await press(page, beam);
+    await mustPress(page, beam);
     // The kicker is armed, not fired: it waits for the bucket that puts this batch head-on
     // with the other beam. Ramping before it fires loses the batch into a wall.
     await until(page, 'panel-beam', (t) => new RegExp(`beam ${n}\\s*\\d+ batches`).test(t));
   }
-  await selectView(page, 'LHC');
-  await press(page, 'ramp → 6.8 TeV');
+  await selectView(page, 'lhc');
+  await setRamp(page, 'collider', true);
   await until(page, 'panel-power', (t) => t.includes('flat top'), 30);
   // **Cog, and mean it.** Injection no longer waits for a phase — the phases it could reach
   // were a coarse grid and hunting them was seconds of dead time — so a fresh fill collides
   // nowhere until the crossing point is walked onto an interaction point, and that is what
   // this button is. Matched on "no collisions" rather than on an experiment's name, which
   // has changed once already.
-  await press(page, 'auto');
+  await mustPress(page, 'cog-auto');
   await until(page, 'panel-physics', (t) => !t.includes('no collisions'), 60);
   // Both experiments have to have triggered on something or their panels are not on screen,
   // and with one batch per beam that only happens while both cover an IP — which comes round

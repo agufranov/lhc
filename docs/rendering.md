@@ -93,14 +93,42 @@ The sheet publishes its height, and that height is used twice: the camera is fit
 the window and the bar is in the overlay's grid, so without it the first phone screenshot had
 **no controls on it at all**.
 
+**It starts folded, and shows one line of numbers while it is.** Open, it is a third of the
+window and the whole complex is drawn 260 px across; folded, the machine gets 500 px of an
+844 px phone. What makes folding affordable is the peek line — energy, what is in each beam,
+the luminosity — which is what somebody watching wants to know without asking for it. A tap on
+a group opens the sheet at it, and a tap on the group already open folds it away again.
+
+Inside the sheet **a panel stops being a panel**: no border, no background, no blur, full
+width, one rule between groups. Six bordered translucent boxes stacked inside a seventh is what
+made this read as a pile of cards rather than a page of readings. The load-bearing line is
+`align-self: stretch`, because `.panel` carries `align-self: start` for the rails — where a
+panel is a fixed 260 px column — and in the sheet's flex column that shrank the readouts to
+their content: measured at 165 px of a 390 px screen, with a gulf beside them.
+
 So the invariant holds at 390 px in its original form: no panel is drawn over the machine,
 because the machine is fitted into what the panels left. What a small screen costs instead is
 size, and the numbers are worth keeping:
 
-- the bar is **two rows and no more** — the places on one, everything pressable on the other,
-  both scrolling sideways rather than wrapping. At four rows it took 200 px and left the whole
-  complex drawn 120 px across.
-- the sheet is **34 vh**, and it folds away to its tab strip.
+- the bar is **three rows, each of which fits**: the places, the controls of the place, and the
+  two that belong to no place (pause, and the dumps). At four rows it took 200 px and left the
+  whole complex drawn 120 px across.
+- **only the places scroll sideways**, and they say so with a mask that fades the edge a tab is
+  running under. Everything else wraps: a control you have to drag a strip to find is a control
+  that is not there. What makes wrapping affordable is that a bar changing height no longer
+  lands a camera in flight — see `Renderer.resize`, where a chrome change re-fits the flight's
+  destination instead of cancelling it.
+- **every control says the same thing in fewer words** (`Controls.setCompact`): `⚡ fill`, not
+  `⚡ fill SPS`; `→ beam 1`, not `→ LHC beam 1`. It is not abbreviation, it is the context
+  removed, because the tab above the button already carries it. The long labels are 440 px of
+  button in a row that has 374.
+- **`CAMERA_MARGIN` is a ceiling, not a constant.** 80 px is a fourteenth of a desktop window
+  and a fifth of a phone: at 390 px it took 160 of the 390 and drew the complex in 230. Below
+  `MOBILE_WIDTH` the margin is 6 % of the window instead — but never less than `LABEL_ROOM`,
+  because the labels are drawn 40 px *outside* the tunnel and at 23 px of margin the window cut
+  `S45` and `MKD · MSD` in half. It costs nothing there: a phone's picture is width-limited, so
+  the wider border changes no scale.
+- the sheet is **34 vh** when open, and folds to its tabs and the peek line.
 - **the camera's places are what make the machine usable at this size**, and this is the part
   that could not have been designed around: the complex on a phone is a ring 150 px across, and
   going to the injector or an experiment is the only way to see anything in it.

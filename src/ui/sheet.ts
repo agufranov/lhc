@@ -15,18 +15,26 @@
  *
  * ## What it is, exactly
  *
- * A strip of tabs and one group of panels at a time, at the bottom of the window, over the
- * picture — and **the picture is fitted above it**, which is the whole reason the machine is
- * still visible on a phone. Its height is published to `main.ts`, which adds it to what the
- * camera has to keep clear, so the invariant survives the small screen intact: no panel is
- * drawn over the machine, on any size of window. It can be collapsed to its tab strip, and
- * then the machine has almost the whole screen.
+ * A strip of tabs, **one line of numbers that is always there**, and one group of panels at a
+ * time — at the bottom of the window, and **the picture is fitted above it**, which is the
+ * whole reason the machine is still visible on a phone. Its height is published to `main.ts`,
+ * which adds it to what the camera has to keep clear, so the invariant survives the small
+ * screen intact: no panel is drawn over the machine, on any size of window.
+ *
+ * **It starts folded, and that is the important decision.** Open, it is a third of the window
+ * and the whole complex is drawn 260 px across; folded, the machine gets some 550 px of a
+ * 844 px phone. What makes folding affordable is the peek line: energy, what is in each beam,
+ * and the luminosity, which is what somebody watching wants to know without asking. The rest
+ * is one tap away, and a tap on any group opens it.
  *
  * The groups are not one tab per panel. Five panels and two experiments is seven tabs on a
  * 390 px screen, which is a scroller; grouped by what they answer — what the beam is doing,
  * what the run has collected, what the machine's own state is — it is three, plus an
  * experiment's tab that appears when that experiment has something to show.
  */
+
+import type { World } from '../sim/world';
+import { energyGeV } from './format';
 
 export interface SheetGroup {
   id: string;
@@ -50,6 +58,9 @@ export class Sheet {
   private tabsRoot: HTMLElement;
   private body: HTMLElement;
   private toggle: HTMLButtonElement;
+  /** The one line that is on screen whether the sheet is open or shut. */
+  private peek: HTMLElement;
+  private peekText = '';
   private tabs = new Map<string, HTMLButtonElement>();
   /** Where each panel came from, so it can be put back when the window grows. */
   private home = new Map<string, HTMLElement>();
@@ -79,11 +90,16 @@ export class Sheet {
     this.toggle.addEventListener('click', () => this.setOpen(!this.open));
     this.tabsRoot.append(this.toggle);
 
+    this.peek = document.createElement('div');
+    this.peek.className = 'sheet-peek';
+    this.root.insertBefore(this.peek, this.body);
+
     for (const id of GROUPS.flatMap((g) => g.panels)) {
       const el = document.getElementById(id);
       if (el?.parentElement) this.home.set(id, el.parentElement);
     }
-    this.setOpen(true);
+    // Folded to start with: the picture is what a phone has least of.
+    this.setOpen(false);
   }
 
   /**
@@ -111,21 +127,38 @@ export class Sheet {
         }
       }
     }
-    if (mobile) this.show(this.current);
+    // `applyGroups` and not `show`: attaching must not decide whether the sheet is open. It
+    // starts folded and stays however the reader left it.
+    this.applyGroups();
   }
 
-  /** Which group is on screen. Panels not in it are not in the layout at all. */
+  /**
+   * Which group is on screen.
+   *
+   * A tap on a group opens the sheet at it; a tap on the group already open folds it away
+   * again, which is the same gesture doing the obvious thing in both directions and saves the
+   * chevron from being the only way to get the picture back.
+   */
   show(id: string): void {
+    if (id === this.current && this.open) {
+      this.setOpen(false);
+      return;
+    }
     this.current = id;
-    for (const [tab, el] of this.tabs) el.classList.toggle('is-current', tab === id);
+    this.applyGroups();
+    this.setOpen(true);
+  }
+
+  /** Puts the panels of the current group on screen and takes the rest out of the layout. */
+  private applyGroups(): void {
+    for (const [tab, el] of this.tabs) el.classList.toggle('is-current', tab === this.current);
     for (const group of GROUPS) {
       for (const panelId of group.panels) {
         const el = document.getElementById(panelId);
-        if (el && this.attached) el.classList.toggle('sheet-hidden', group.id !== id);
+        if (el && this.attached) el.classList.toggle('sheet-hidden', group.id !== this.current);
         else el?.classList.remove('sheet-hidden');
       }
     }
-    if (!this.open) this.setOpen(true);
   }
 
   private setOpen(open: boolean): void {
@@ -141,8 +174,28 @@ export class Sheet {
    * Called every frame; every write is guarded, so a frame in which nothing changed writes
    * nothing.
    */
-  update(): void {
+  update(world: World): void {
     if (!this.attached) return;
+
+    // What is worth knowing without opening anything: what the beams are, what is in each of
+    // them, and whether they are colliding. The same three questions BEAM and PHYSICS answer
+    // at length, asked of the same functions the HUD asks — `bunchesInBeam` is what says how
+    // many batches are going each way round the collider.
+    const b1 = world.bunchesInBeam(0, 1);
+    const b2 = world.bunchesInBeam(0, -1);
+    const lumi = world.detectors.reduce((max, d) => Math.max(max, d.smoothed), 0);
+    // Exponential and not SI prefixes: a luminosity is 1e33, and `si` walks a table that
+    // stops at tera — it printed `893365744124313075712 Tcm⁻²s⁻¹`. The HUD writes it the way
+    // the field does, and so does this. The threshold is the HUD's too: below 1e28 there is
+    // nothing happening worth a number.
+    const text =
+      `${energyGeV(world.collider.telemetry().energyGeV)} · B1 ${b1 || '—'} · B2 ${b2 || '—'} · ` +
+      `L ${lumi > 1e28 ? `${lumi.toExponential(1)} cm⁻²s⁻¹` : '—'}`;
+    if (text !== this.peekText) {
+      this.peekText = text;
+      this.peek.textContent = text;
+    }
+
     for (const group of GROUPS) {
       if (!group.whenVisible) continue;
       const panel = document.getElementById(group.panels[0]);
@@ -150,7 +203,10 @@ export class Sheet {
       const tab = this.tabs.get(group.id)!;
       if (tab.hidden === !has) continue;
       tab.hidden = !has;
-      if (!has && this.current === group.id) this.show('beam');
+      if (!has && this.current === group.id) {
+        this.current = 'beam';
+        this.applyGroups();
+      }
     }
   }
 

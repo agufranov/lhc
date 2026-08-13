@@ -157,6 +157,11 @@ tracked in it.
 - **The experiments' cards are hidden for the 0.75 s of a camera flight.** Coming out of a
   zoomed view the machine covers the whole window part-way through, and a card is a thing that
   stands beside the machine.
+- **A phone's picture is width-limited, and the space above and below it is dead.** A ring is
+  square and a phone is tall: at 390 px the collider is drawn 294 px across with room to spare
+  vertically, and nothing is done with that room. Cropping the fit to fill it would push the
+  arcs off the sides of the window, which is worse. What the slack does buy is that opening the
+  sheet costs almost nothing until it passes about 40 % of the window.
 - **On a phone the complex is a ring 150 px across, and the sector names are not drawn.** The
   narrow layout keeps every panel off the machine by fitting the machine into what is left
   (`rendering.md`), and what it cannot buy back is size: sixteen labels round a ring have 20 px

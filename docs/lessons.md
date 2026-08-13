@@ -236,3 +236,27 @@ None of these threw. All of them looked like broken physics.
   photographed. A screenshot of a completely different application came back looking plausible.
   `LHC_URL=http://127.0.0.1:<port>/` picks the right one; the giveaway is `curl -s <url> | grep
   '<title>'`, which must say `LHC — beam playground`.
+- **`align-self: start` follows a panel out of the column it was written for.** The readouts are
+  a fixed 260 px in the rails and that line keeps them from stretching; moved into the sheet's
+  flex column it made them shrink to their content instead — 165 px of a 390 px screen, with a
+  gulf beside them, which is what "the layout is inconsistent" looked like. A rule written for
+  one container is a rule the other container inherits.
+- **A bar that changes height lands a camera that is still flying.** The overlay's furniture is
+  measured every frame and the camera is fitted inside it, so a cluster of controls wrapping to
+  a second row counted as a window resize — which cancelled the flight the very same tap had
+  started. Held off for a while by pinning the bar's height, which then made every cluster as
+  tall as the tallest. The fix is to tell the two events apart: a *window* resize lands the
+  flight, a *chrome* change re-fits its destination and lets it carry on.
+- **A scroller is not a place to put a control.** The first narrow bar put the place's controls
+  in a horizontal scroller so they would always "fit"; what the screenshot showed was a button
+  cut in half at the edge of the window. Only navigation may scroll, and only if it says so.
+- **A browser gate that presses buttons by their label goes quiet the day the labels change.**
+  The narrow layout shortens every control's text (`setCompact`), and `collide()` was matching
+  `→ LHC beam 1`; every press in it silently found nothing, so the phone was measured for a
+  minute and a half with an empty collider and eleven assertions passed on it. Two fixes, both
+  needed: controls carry a `data-control` key that does not change with their wording, and the
+  driver's `mustPress` throws rather than returning `false` into nobody's hands. **A driver
+  that can fail silently is worse than no driver**, because its output looks like a pass.
+- **A setpoint cannot be told twice.** With the ramps as one button, the old `press('SPS flat
+  bottom')` became "press the ramp", which sends a machine already at flat bottom *up*. Driving
+  a toggle means reading the state first — `setRamp` does, off `targetEnergy`.

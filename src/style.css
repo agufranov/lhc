@@ -781,12 +781,16 @@ select {
 
   /* The places scroll sideways rather than wrapping: six of them at 390 px is a row and a
      half, and a tab bar that reflows as the labels change length is a tab bar that moves
-     under the thumb. */
+     under the thumb. It is the one strip here that scrolls, and it says so — the mask fades
+     the edge a tab is running under, so a half-visible CMS reads as "there is more" rather
+     than as a cut-off button. */
   .control--tabs {
     order: 1;
     flex: 1 1 100%;
     overflow-x: auto;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
   }
 
   .control--tabs::-webkit-scrollbar {
@@ -803,21 +807,19 @@ select {
     order: 3;
   }
 
-  /* `1 1 0` and `min-width: 0`, so a cluster with four buttons in it shrinks and scrolls
-     instead of pushing the dumps onto a row of their own. */
+  /* **Wraps, never scrolls.** A control you have to drag a strip sideways to find is a
+     control that is not there, and the injector's four are 440 px of button in a row that has
+     374 of them even after `setCompact` has shortened every label. So they take a second line
+     when they need one — which the camera survives, because a bar that changes height no
+     longer lands a flight (`Renderer.resize`). */
   .control--cluster {
     order: 2;
     flex: 1 1 100%;
     min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
+    flex-wrap: wrap;
     border: 0;
     padding: 0;
     gap: 5px;
-  }
-
-  .control--cluster::-webkit-scrollbar {
-    display: none;
   }
 
   .control--dump {
@@ -843,6 +845,15 @@ select {
     top: auto;
     left: auto;
     width: auto;
+    align-self: stretch;
+  }
+
+  /* The picture is the point of this panel and it takes the width; 300 px of barrel on a
+     390 px screen is the biggest an event display has ever been drawn in this app. */
+  #panel-ip-a .event-view,
+  #panel-ip-b .event-view {
+    max-width: 320px;
+    margin: 0 auto;
   }
 
   .panel--event .event-body {
@@ -869,6 +880,23 @@ select {
 
   .sheet.is-collapsed .sheet-body {
     display: none;
+  }
+
+  /* The line that is there whether the sheet is open or shut, and what makes folding it
+     affordable: energy, what is in each beam, and the luminosity. */
+  .sheet-peek {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 11.5px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sheet:not(.is-collapsed) .sheet-peek {
+    color: var(--muted);
   }
 
   .sheet-tabs {
@@ -918,15 +946,41 @@ select {
 
   .sheet-body {
     overflow-y: auto;
-    padding: 8px;
+    padding: 10px 12px 12px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     -webkit-overflow-scrolling: touch;
   }
 
+  /* **The panels stop being panels in here.** The sheet is already a surface with a border
+     and a background; a bordered, blurred, rounded box inside it — six of them stacked — is
+     what made this read as a pile of cards rather than a page of readings. Inside the sheet a
+     panel is its heading and its rows, full width, separated by space.
+
+     `align-self` is the load-bearing line: `.panel` sets `align-self: start` for the rails,
+     where a panel is a fixed 260 px column, and in a flex column that makes it shrink to its
+     content — which is why the readouts came out half the width of the screen with a gulf
+     beside them. */
   .sheet-body .panel {
     width: auto;
+    align-self: stretch;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    backdrop-filter: none;
+    padding: 0;
+  }
+
+  /* One rule below every group but the last, so `power`, `injector` and `compute` read as
+     three sections of one page rather than three floating boxes. */
+  .sheet-body .panel + .panel {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+
+  .sheet-body .panel h2 {
+    margin-bottom: 4px;
   }
 
   .sheet-hidden {

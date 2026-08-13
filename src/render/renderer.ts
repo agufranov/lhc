@@ -45,7 +45,14 @@ import type { DamageSite } from '../sim/damage';
 import { DETECTOR_SHELLS, SEGMENT_STRIDE, SPECIES_COUNT } from '../sim/shower';
 import { INSERTION_HALF_LENGTH_F, INSERTION_RADIUS_F } from '../sim/detector';
 import type { MachineBands } from '../ui/layout';
-import { CAMERA_MARGIN, LABEL_ROOM, OVERLAY_GAP, OVERLAY_PADDING, READOUT_COLUMN } from '../ui/layout';
+import {
+  CAMERA_MARGIN,
+  LABEL_ROOM,
+  MOBILE_WIDTH,
+  OVERLAY_GAP,
+  OVERLAY_PADDING,
+  READOUT_COLUMN,
+} from '../ui/layout';
 import type { Borders, CameraFrame } from './camera';
 import { Camera, easeInOut, frameFor, lerpFrame } from './camera';
 import { MAGNET_GAP_F, MAGNET_WIDTH_F, WALL_F, bore } from './structure';
@@ -70,6 +77,13 @@ import {
  * relates them otherwise. `check:render` asserts the clearance.
  */
 const MARGIN = CAMERA_MARGIN;
+/**
+ * The margin as a fraction of the window, which is what a narrow one gets instead.
+ *
+ * Applied only below `MOBILE_WIDTH`, so every desktop number in `docs/rendering.md` is
+ * untouched; a 390 px phone gets 23 px a side instead of 80, which is 114 px more machine.
+ */
+const MARGIN_F = 0.06;
 /** Tail decay constant [s] at low speed, and its cap as a fraction of one turn. */
 const TAIL_TAU = 0.28;
 const TAIL_MAX_TURNS = 0.4;
@@ -269,14 +283,19 @@ export class Renderer {
     // How wide the overlay's side columns are. On a phone there are none — the readouts are
     // in a sheet along the bottom — and a zoomed view may then have the whole width.
     const sides = chrome.sides ?? OVERLAY_PADDING + READOUT_COLUMN + OVERLAY_GAP;
+    const sizeChanged = w !== this.cssWidth || h !== this.cssHeight || dpr !== this.dpr;
     const resized =
-      w !== this.cssWidth ||
-      h !== this.cssHeight ||
-      dpr !== this.dpr ||
+      sizeChanged ||
       chrome.top !== this.chromeTop ||
       chrome.bottom !== this.chromeBottom ||
       sides !== this.chromeSides;
 
+    // The overlay's own furniture changing height is not the same event as the window
+    // changing size, and it used to be treated as one. A bar that wraps to a second row when
+    // the cluster changes — which is what a narrow window does on every tab press — moved the
+    // chrome, which landed the flight that press had just started. The flight survives it now:
+    // its destination is re-fitted in the new box and it carries on from where it is.
+    const chromeOnly = !sizeChanged && this.flight !== null;
     if (!resized && !this.flight && !this.pendingView) return;
 
     if (resized) {
@@ -294,17 +313,29 @@ export class Renderer {
       this.beamCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.beamCtx.clearRect(0, 0, w, h);
       this.lastBeam.clear();
-      // A flight's two ends are frames, and a frame is only meaningful against the borders it
-      // was fitted in. Rather than re-derive a half-finished one against a window that has
-      // just changed under it, arrive: a camera that lands early while the window is being
-      // dragged is not a bug, and a camera interpolating between two stale frames is.
-      this.flight = null;
+      // A window really changing size lands the flight: a camera that arrives early while the
+      // window is being dragged is not a bug, and one interpolating between two frames fitted
+      // to a window that no longer exists is.
+      if (sizeChanged) this.flight = null;
     }
 
     const borders = this.borders();
     if (this.pendingView) {
       this.pendingView = false;
       this.startFlight(world, borders);
+    }
+
+    if (this.flight && chromeOnly) {
+      // Same flight, same progress, a new box to land in. `from` is a scale and a world point,
+      // so it needs nothing done to it; the destination and the overlay's bands are re-fitted.
+      this.flight.to = frameFor(viewBounds(world, this.flight.toView), w, h, borders);
+      this.flight.bands = this.flightBands(
+        world,
+        this.flight.from,
+        this.flight.to,
+        this.flight.fromView,
+        borders,
+      );
     }
 
     if (this.flight) {
@@ -361,12 +392,27 @@ export class Renderer {
    * over the machine" true by construction rather than by measurement.
    */
   private borders(): Borders {
-    const side = this.viewId === 'complex' ? MARGIN : Math.max(MARGIN, this.chromeSides);
+    // `CAMERA_MARGIN` is 80 px, which is a fourteenth of a desktop window and a fifth of a
+    // phone: at 390 px it took 160 of the 390 and drew the whole complex in 230 px. So below
+    // the width at which the whole layout changes shape, the margin is a *fraction* of the
+    // window instead — and above it, it is the 80 px every desktop measurement in
+    // `docs/rendering.md` was made with, to the pixel.
+    // …but never less than the labels need. They are drawn 40 px *outside* the tunnel wall and
+    // are not inside the bounds being fitted at all — which is what `LABEL_ROOM` is for at the
+    // top and bottom. On a desktop the sides never needed it, because the machine is limited by
+    // the window's height and there is slack either side; on a phone at 23 px of margin the
+    // ring ran to the edges and `S45` and `MKD · MSD` were cut in half by the window. It costs
+    // nothing: the picture is still height-limited, so the wider border changes no scale.
+    const margin =
+      this.cssWidth < MOBILE_WIDTH
+        ? Math.max(this.cssWidth * MARGIN_F, LABEL_ROOM)
+        : MARGIN;
+    const side = this.viewId === 'complex' ? margin : Math.max(margin, this.chromeSides);
     return {
       left: side,
       right: side,
-      top: Math.max(MARGIN, this.chromeTop + LABEL_ROOM),
-      bottom: Math.max(MARGIN, this.chromeBottom + LABEL_ROOM),
+      top: Math.max(margin, this.chromeTop + LABEL_ROOM),
+      bottom: Math.max(margin, this.chromeBottom + LABEL_ROOM),
     };
   }
 

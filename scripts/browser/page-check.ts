@@ -432,6 +432,9 @@ for (const [width, height] of sizes) {
         beamInSheet: inside('#panel-beam', '#sheet-body'),
         eventInSheet: inside('#panel-ip-a', '#sheet-body'),
         overflow: document.documentElement.scrollWidth - window.innerWidth,
+        colliding: (window as unknown as {
+          lhc: { world: { detectors: Array<{ integrated: number }> } };
+        }).lhc.world.detectors.every((d) => d.integrated > 0),
         // Only what is on screen: the clusters belonging to the other places are in the DOM
         // with `display: none` on them, and a control that is not shown is 0 px tall.
         smallestTap: Math.min(
@@ -439,6 +442,17 @@ for (const [width, height] of sizes) {
             .filter((el) => (el as HTMLElement).offsetParent !== null)
             .map((el) => (el as HTMLElement).getBoundingClientRect().height),
         ),
+        // Every control that is on screen, and whether the window has cut it in half. The
+        // places are excluded: that strip scrolls on purpose and says so with a fade, and a
+        // tab half under the edge of a scroller is not a clipped control. Nothing else here
+        // may be reached by dragging.
+        clipped: Array.from(document.querySelectorAll('#controls button:not(.control--tab)'))
+          .filter((el) => (el as HTMLElement).offsetParent !== null)
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            return { label: (el.textContent ?? '').trim(), left: r.left, right: r.right };
+          })
+          .filter((b) => b.left < 0 || b.right > window.innerWidth),
         crushed: ['panel-beam', 'panel-physics', 'panel-run', 'panel-power', 'panel-injector']
           .map((id) => {
             const el = document.getElementById(id);
@@ -449,6 +463,15 @@ for (const [width, height] of sizes) {
     });
 
     check('the readouts are in the sheet', m.beamInSheet && m.beam !== null);
+    // The run has to have *happened*: every measurement below is of a machine with two beams
+    // in it, and a driver that pressed nothing would leave every one of them passing on an
+    // empty collider. This is the assertion that was missing when `setCompact` shortened the
+    // labels `collide()` was matching on.
+    check(
+      'the phone reached two colliding beams',
+      m.colliding,
+      m.colliding ? 'both experiments have collected' : 'the collider never filled',
+    );
     check(
       'the machine is drawn above the sheet, not behind it',
       m.sheet !== null && m.machineBottom <= m.sheet.top + 1,
@@ -484,6 +507,15 @@ for (const [width, height] of sizes) {
       // of the visible box, and asserting otherwise measured the scroller rather than the
       // layout. What would be a bug is a card standing beside or above the sheet, over the
       // machine — which is what these two edges and the top are for.
+      // Measured with the sheet **open**, which is the only state in which it has a width at
+      // all: folded, the body is `display: none` and every box in it is zero.
+      //
+      // `.panel` carries `align-self: start` for the rails, where a panel is a fixed 260 px
+      // column; inherited into the sheet's flex column it shrank the readouts to their own
+      // content — 165 px of a 390 px screen with a gulf beside them, which is what "the layout
+      // is inconsistent" looked like.
+      const readout = document.querySelector('#sheet-body .panel:not(.sheet-hidden)');
+      const body = document.getElementById('sheet-body')!;
       return {
         inside:
           p.left >= sh.left - 1 &&
@@ -492,6 +524,8 @@ for (const [width, height] of sizes) {
           p.top < sh.bottom,
         width: p.width,
         picture: canvas?.width ?? 0,
+        fills: readout ? readout.getBoundingClientRect().width : 0,
+        body: body.clientWidth - 24,
       };
     });
     check(
@@ -500,13 +534,24 @@ for (const [width, height] of sizes) {
       opened ? `${opened.width.toFixed(0)} px wide, picture ${opened.picture.toFixed(0)} px` : 'no experiment tab',
     );
     check(
+      'the readouts fill the sheet rather than huddling in a column',
+      opened !== null && Math.abs(opened.fills - opened.body) <= 2,
+      opened ? `${opened.fills.toFixed(0)} px of ${opened.body.toFixed(0)}` : 'no panel open',
+    );
+    check(
+      'no control is cut off by the edge of the window',
+      m.clipped.length === 0,
+      m.clipped.map((c) => `${c.label} at ${c.left.toFixed(0)}..${c.right.toFixed(0)}`).join(', ') ||
+        'every one of them whole',
+    );
+    check(
       'no panel has been crushed — the sheet scrolls, its panels do not',
       m.crushed.length === 0,
       m.crushed.map((c) => `${c.id} by ${c.by}`).join(', ') || 'none',
     );
 
     // The tabs are the only way round a machine this size, so they had better work.
-    await selectView(session.page, 'SPS');
+    await selectView(session.page, 'sps');
     // Field by field: a class instance does not survive being returned from the page, and the
     // first version of this read `undefined` out of a perfectly good renderer.
     const view = await session.page.evaluate(() => {

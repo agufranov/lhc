@@ -58,18 +58,28 @@ export interface ControlHandlers {
  */
 export class Controls {
   private pauseBtn: HTMLButtonElement;
+  private paused = false;
   private blocks: Block[] = [];
   private tabs: Tab[] = [];
   private clusters = new Map<ViewId, HTMLElement>();
   private toggles: Toggle[] = [];
   private shown: ViewId | null = null;
+  /** Every control that says something shorter on a narrow screen. */
+  private labels: Array<{ el: HTMLButtonElement; long: string; short: string }> = [];
+  private compact = false;
 
   constructor(root: HTMLElement, world: World, handlers: ControlHandlers) {
     root.innerHTML = '';
     const collider = world.collider.ring.config;
     const injector = world.injector.ring.config;
 
-    this.pauseBtn = button(root, '⏸ pause', handlers.onTogglePause, 'Stops the clock. Space does the same.');
+    this.pauseBtn = button(
+      root,
+      '⏸ pause',
+      handlers.onTogglePause,
+      'Stops the clock. Space does the same.',
+      'pause',
+    );
     this.pauseBtn.classList.add('control--pause');
 
     // --- the places -----------------------------------------------------------
@@ -88,23 +98,31 @@ export class Controls {
     // belong both to the machine they fire in and to the line they fire down.
     const fill: Item = [
       `⚡ fill ${injector.name}`,
+      '⚡ fill',
       `Runs the chain: the ${injector.name} goes back to its ${injector.injectionEnergyGeV} GeV ` +
         `flat bottom, and ${(21.6).toFixed(1)} s later the PS delivers a batch into it. ` +
         'Batches stack at flat bottom, which is what a real fill does.',
       handlers.onFillInjector,
       (w: World) => (w.fillRemaining > 0 ? 'the chain is already delivering this cycle' : null),
+      'fill',
     ];
     const toBeam1: Item = [
       `→ ${collider.name} beam 1`,
+      '→ beam 1',
       'Fires the TI 2 extraction kickers. The batch leaves the injector on its next ' +
         'pass and flies down the transfer line, clockwise into the collider.',
       () => handlers.onExtract('ti2'),
+      undefined,
+      'to-beam-1',
     ];
     const toBeam2: Item = [
       `→ ${collider.name} beam 2`,
+      '→ beam 2',
       'Same, down TI 8 — which has to bend, and arrives pointing the other way round ' +
         'the ring. That is the whole of what makes it the counter-rotating beam.',
       () => handlers.onExtract('ti8'),
+      undefined,
+      'to-beam-2',
     ];
 
     this.cluster(root, 'complex', [fill]);
@@ -121,6 +139,7 @@ export class Controls {
         'Extract before it has finished and a 26 GeV batch arrives at a collider set for ' +
         '450 — the same lesson as injecting into a ramped collider, one machine earlier.',
       'Back down to the energy the chain delivers at. Nothing can be filled until it is here.',
+      'ramp-injector',
     );
 
     this.cluster(root, 'ti', [toBeam1, toBeam2]);
@@ -139,6 +158,7 @@ export class Controls {
       `Back to the ${collider.injectionEnergyGeV} GeV the transfer lines are set for. The energy ` +
         'leaves the coils through the extraction resistors, which is why it takes as long ' +
         'coming down as it did going up.',
+      'ramp-collider',
     );
     this.cogging(colliderCluster, handlers);
 
@@ -156,20 +176,50 @@ export class Controls {
     cap.className = 'caption';
     cap.textContent = 'dump';
     dump.append(cap);
-    button(dump, '⏻ beam 1', () => handlers.onExtract('td1'), 'Fires the beam 1 dump kickers at Point 5.');
-    button(
+    const dump1 = button(
+      dump,
+      '⏻ beam 1',
+      () => handlers.onExtract('td1'),
+      'Fires the beam 1 dump kickers at Point 5.',
+      'dump-1',
+    );
+    const dump2 = button(
       dump,
       '⏻ beam 2',
       () => handlers.onExtract('td2'),
       'Fires the beam 2 dump kickers, the other way out of the same straight.',
+      'dump-2',
     );
+    this.labels.push({ el: dump1, long: '⏻ beam 1', short: '⏻ 1' });
+    this.labels.push({ el: dump2, long: '⏻ beam 2', short: '⏻ 2' });
     root.append(dump);
 
     this.update(world, 'complex');
   }
 
   setPaused(paused: boolean): void {
-    this.pauseBtn.textContent = paused ? '▶ run' : '⏸ pause';
+    this.paused = paused;
+    this.pauseBtn.textContent = paused
+      ? this.compact ? '▶' : '▶ run'
+      : this.compact ? '⏸' : '⏸ pause';
+  }
+
+  /**
+   * Narrow screen: every control says the same thing in fewer words.
+   *
+   * Called with the same media query the sheet and the stylesheet use, so the bar is never
+   * half in one mode and half in the other.
+   */
+  setCompact(compact: boolean): void {
+    if (compact === this.compact) return;
+    this.compact = compact;
+    for (const l of this.labels) l.el.textContent = compact ? l.short : l.long;
+    for (const t of this.toggles) {
+      t.el.textContent = t.up
+        ? compact ? t.upShort : t.upLabel
+        : compact ? t.downShort : t.downLabel;
+    }
+    this.setPaused(this.paused);
   }
 
   /**
@@ -203,7 +253,9 @@ export class Controls {
       const up = !programmedFor(t.target(world), t.topGeV);
       if (up !== t.up) {
         t.up = up;
-        t.el.textContent = up ? t.upLabel : t.downLabel;
+        t.el.textContent = up
+          ? this.compact ? t.upShort : t.upLabel
+          : this.compact ? t.downShort : t.downLabel;
         t.el.title = up ? t.upTitle : t.downTitle;
       }
     }
@@ -228,8 +280,9 @@ export class Controls {
     const wrap = document.createElement('div');
     wrap.className = 'control control--group control--cluster';
     wrap.dataset.view = id;
-    for (const [label, title, onClick, why] of items) {
-      const el = button(wrap, label, onClick, title);
+    for (const [label, short, title, onClick, why, key] of items) {
+      const el = button(wrap, label, onClick, title, key);
+      this.labels.push({ el, long: label, short });
       if (why) this.block(el, why);
     }
     root.append(wrap);
@@ -247,13 +300,34 @@ export class Controls {
     onRamp: (up: boolean) => void,
     upTitle: string,
     downTitle: string,
+    key: string,
   ): void {
-    const upLabel = `▲ ramp → ${topGeV >= 1000 ? `${(topGeV / 1000).toFixed(1)} TeV` : `${topGeV} GeV`}`;
+    const top = topGeV >= 1000 ? `${(topGeV / 1000).toFixed(1)} TeV` : `${topGeV} GeV`;
+    const upLabel = `▲ ramp → ${top}`;
     const downLabel = `▼ ramp → ${bottomGeV} GeV`;
+    const upShort = `▲ ${top}`;
+    const downShort = `▼ ${bottomGeV} GeV`;
     // Read at the moment it is pressed rather than trusting the label: a ramp that has been
     // reversed while the finger was on the way down must still do the sane thing.
-    const el = button(root, upLabel, () => onRamp(!programmedFor(target(world), topGeV)), upTitle);
-    this.toggles.push({ el, target, topGeV, upLabel, downLabel, upTitle, downTitle, up: true });
+    const el = button(
+      root,
+      upLabel,
+      () => onRamp(!programmedFor(target(world), topGeV)),
+      upTitle,
+      key,
+    );
+    this.toggles.push({
+      el,
+      target,
+      topGeV,
+      upLabel,
+      downLabel,
+      upShort,
+      downShort,
+      upTitle,
+      downTitle,
+      up: true,
+    });
   }
 
   /**
@@ -286,6 +360,7 @@ export class Controls {
       () => handlers.onAutoCog(),
       'Walks the crossing point onto the first interaction point and stops. The two ' +
         'insertions are half a ring apart, so aligning one aligns the other.',
+      'cog-auto',
     );
     const right = hold(root, 'cog ▶', (down) => handlers.onCog(down ? 1 : 0), 'The same, the other way.');
     const needsTwoBeams = (w: World): string | null =>
@@ -324,13 +399,25 @@ interface Toggle {
   topGeV: number;
   upLabel: string;
   downLabel: string;
+  /** The same, for a narrow screen: the tab already says which machine this is. */
+  upShort: string;
+  downShort: string;
   upTitle: string;
   downTitle: string;
   up: boolean;
 }
 
-/** A cluster entry: label, tooltip, what it does, and when it would do nothing. */
-type Item = [string, string, () => void, ((world: World) => string | null)?];
+/**
+ * A cluster entry: label, the same label for a phone, tooltip, what it does, and when it
+ * would do nothing.
+ *
+ * **The short label is not an abbreviation, it is the same words with the context removed.**
+ * `⚡ fill SPS` is on the tab that says SPS; `→ LHC beam 1` is reached from a bar whose only
+ * other machine is the LHC. On a 390 px screen the long ones are 440 px of button in a row
+ * that has 374, and the fix cannot be a scroller — a control you have to find by dragging is
+ * a control that is not there.
+ */
+type Item = [string, string, string, () => void, ((world: World) => string | null)?, string?];
 
 /** Is the machine already asking for this energy, to within a volt of it? */
 function programmedFor(target: number, energyGeV: number): boolean {
@@ -342,14 +429,25 @@ function blocked(el: HTMLElement): boolean {
   return el.getAttribute('aria-disabled') === 'true';
 }
 
+/**
+ * A control, with a **key that does not change when its label does**.
+ *
+ * `data-control` is what the browser gates press. They used to match on the visible text, and
+ * the moment the narrow layout started shortening labels (`setCompact`) every press in
+ * `collide()` silently found nothing: the machine was driven for a minute and a half with two
+ * empty beams, and only an unrelated assertion noticed. A driver that matches on the words a
+ * button happens to be saying is a driver that goes quiet the day the words change.
+ */
 function button(
   root: HTMLElement,
   label: string,
   onClick: () => void,
   title?: string,
+  key?: string,
 ): HTMLButtonElement {
   const el = document.createElement('button');
   el.className = 'control control--button';
+  if (key) el.dataset.control = key;
   el.textContent = label;
   if (title) el.title = title;
   el.addEventListener('click', () => {
@@ -397,6 +495,7 @@ function hold(
 function tab(root: HTMLElement, view: View, onClick: () => void): Tab {
   const el = document.createElement('button');
   el.className = 'control control--tab';
+  el.dataset.view = view.id;
   el.setAttribute('role', 'tab');
   el.title = view.title;
   const dot = document.createElement('span');

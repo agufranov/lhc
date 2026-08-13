@@ -191,7 +191,10 @@ function frame(now: number): void {
   overlayRoot.classList.toggle('is-flying', renderer.flying);
   // Which readouts are in the sheet, and whether an experiment has earned a tab in it yet.
   sheet.attach(narrow.matches);
-  sheet.update();
+  sheet.update(world);
+  // The same question the sheet and the stylesheet ask, asked once: on a narrow screen every
+  // control says the same thing in fewer words, because the tab above it carries the context.
+  controls.setCompact(narrow.matches);
   // The bar stands on top of the sheet. Published rather than assumed, because the sheet is
   // as tall as its contents up to a cap and the reader can fold it away.
   document.documentElement.style.setProperty('--sheet-height', `${sheet.height}px`);
