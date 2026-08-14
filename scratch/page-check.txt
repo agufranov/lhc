@@ -1,0 +1,130 @@
+--- 1280x860 ---
+  ok   the controls that would do nothing are greyed out — empty collider  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — ramped and colliding  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, empty  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, colliding  — 4 controls as expected
+  ok   every place is there and none is greyed out — empty  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — empty  — ⏻ beam 1, ⏻ beam 2
+  ok   every place is there and none is greyed out — colliding  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — colliding  — ⏻ beam 1, ⏻ beam 2
+       rail-left         16,  63  260x707  (11 px of content scrolled away)
+       rail-right      1004, 273  260x240  (675 px of content scrolled away)
+       panel-ip-a       784,  16  480x241
+       panel-ip-b       784, 529  480x241
+       controls          50, 786  1180x58
+       picture 196 px, numbers beside it 120 px, card 241 px tall
+  ok   both experiments are on screen  — 2 of 2 — the run has to reach collisions
+  ok   no panel is drawn over another panel  — nothing overlaps
+       (cards have retreated into the readout column — window too narrow)
+  ok   no panel has been crushed — the rails scroll, their contents do not  — rails scroll by 675 px right, 11 px left
+  ok   every panel is inside the window  — all in
+  ok   the top card stands clear of the injector, and of the machine beside it  — card 784..257, machine ends at 875 and the injector starts at 430
+  ok   and the bottom card clears it the other way  — card 784..529, machine ends at 901 and the injector ends at 430
+  ok   the picture is at least as big as a barrel is readable at  — 196 px, floor is 196
+  ok   the numbers column is the 120 px the layout was told  — 120 px
+  ok   a card is its taller column plus 45 px of heading and padding  — card 241 px tall, picture 196 px, numbers 120 px
+  ok   the two cards line up with each other and stand off the window edge  — right edges 1264 and 1264, window 1280
+  ok   both spectra have a box to be drawn in  — 238x62, 238x62
+  ok   the ticker is on screen and saying something  — 15 px — "flat top, nothing colliding — cog the crossing point onto an experiment"
+  ok   a catastrophe reaches the page: red banner, shaking ground, a line in the log  — shake 0.74, 3 log lines, banner "INTERCONNECT FAILURE at S23 — a splice w…"
+--- 1919x906 ---
+  ok   the controls that would do nothing are greyed out — empty collider  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — ramped and colliding  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, empty  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, colliding  — 4 controls as expected
+  ok   every place is there and none is greyed out — empty  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — empty  — ⏻ beam 1, ⏻ beam 2
+  ok   every place is there and none is greyed out — colliding  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — colliding  — ⏻ beam 1, ⏻ beam 2
+       rail-left         16,  63  260x753
+       rail-right      1643, 317  260x198  (717 px of content scrolled away)
+       panel-ip-a      1379,  16  524x285
+       panel-ip-b      1379, 531  524x285
+       controls         370, 832  1180x58
+       picture 240 px, numbers beside it 120 px, card 285 px tall
+  ok   both experiments are on screen  — 2 of 2 — the run has to reach collisions
+  ok   no panel is drawn over another panel  — nothing overlaps
+       (cards have retreated into the readout column — window too narrow)
+  ok   no panel has been crushed — the rails scroll, their contents do not  — rails scroll by 717 px right, 0 px left
+  ok   every panel is inside the window  — all in
+  ok   the top card stands clear of the injector, and of the machine beside it  — card 1379..301, machine ends at 1233 and the injector starts at 453
+  ok   and the bottom card clears it the other way  — card 1379..531, machine ends at 1249 and the injector ends at 453
+  ok   the picture is at least as big as a barrel is readable at  — 240 px, floor is 196
+  ok   the numbers column is the 120 px the layout was told  — 120 px
+  ok   a card is its taller column plus 45 px of heading and padding  — card 285 px tall, picture 240 px, numbers 120 px
+  ok   the two cards line up with each other and stand off the window edge  — right edges 1903 and 1903, window 1919
+  ok   both spectra have a box to be drawn in  — 238x62, 238x62
+  ok   the ticker is on screen and saying something  — 15 px — "stable beams — 1.2e+33 cm⁻²s⁻¹ into the two experiments"
+  ok   a catastrophe reaches the page: red banner, shaking ground, a line in the log  — shake 0.74, 3 log lines, banner "INTERCONNECT FAILURE at S23 — a splice w…"
+--- 1600x900 ---
+  ok   the controls that would do nothing are greyed out — empty collider  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — ramped and colliding  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, empty  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, colliding  — 4 controls as expected
+  ok   every place is there and none is greyed out — empty  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — empty  — ⏻ beam 1, ⏻ beam 2
+  ok   every place is there and none is greyed out — colliding  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — colliding  — ⏻ beam 1, ⏻ beam 2
+       rail-left         16,  63  260x747
+       rail-right      1324, 281  260x264  (651 px of content scrolled away)
+       panel-ip-a      1096,  16  488x249
+       panel-ip-b      1096, 561  488x249
+       controls         210, 826  1180x58
+       picture 204 px, numbers beside it 120 px, card 249 px tall
+  ok   both experiments are on screen  — 2 of 2 — the run has to reach collisions
+  ok   no panel is drawn over another panel  — nothing overlaps
+       (cards have retreated into the readout column — window too narrow)
+  ok   no panel has been crushed — the rails scroll, their contents do not  — rails scroll by 651 px right, 0 px left
+  ok   every panel is inside the window  — all in
+  ok   the top card stands clear of the injector, and of the machine beside it  — card 1096..265, machine ends at 1049 and the injector starts at 450
+  ok   and the bottom card clears it the other way  — card 1096..561, machine ends at 1076 and the injector ends at 450
+  ok   the picture is at least as big as a barrel is readable at  — 204 px, floor is 196
+  ok   the numbers column is the 120 px the layout was told  — 120 px
+  ok   a card is its taller column plus 45 px of heading and padding  — card 249 px tall, picture 204 px, numbers 120 px
+  ok   the two cards line up with each other and stand off the window edge  — right edges 1584 and 1584, window 1600
+  ok   both spectra have a box to be drawn in  — 238x62, 238x62
+  ok   the ticker is on screen and saying something  — 15 px — "beam in the collider — ramp it, then cog the crossing point onto an experiment"
+  ok   a catastrophe reaches the page: red banner, shaking ground, a line in the log  — shake 0.74, 3 log lines, banner "INTERCONNECT FAILURE at S23 — a splice w…"
+--- 2560x1440 ---
+  ok   the controls that would do nothing are greyed out — empty collider  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — ramped and colliding  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, empty  — 4 controls as expected
+  ok   the controls that would do nothing are greyed out — the kickers, colliding  — 4 controls as expected
+  ok   every place is there and none is greyed out — empty  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — empty  — ⏻ beam 1, ⏻ beam 2
+  ok   every place is there and none is greyed out — colliding  — 6 tabs, 0 greyed: complex SPS TI 2 · TI 8 LHC ATLAS CMS
+  ok   both dumps are on screen whatever place is selected — colliding  — ⏻ beam 1, ⏻ beam 2
+       rail-left         16,  63  260x1287
+       rail-right      2284, 317  260x1033
+       panel-ip-a      2020,  16  524x285
+       controls         690,1366  1180x58
+       picture 240 px, numbers beside it 120 px, card 285 px tall
+ FAIL  both experiments are on screen  — 1 of 2 — the run has to reach collisions
+--- 1440x900 (the desk, at every place) ---
+       desk 130,826 1180x58, places 82,16 396x31
+  ok   nothing on the desk moves when the place does  — 8 boxes, six places, one set of pixels
+  ok   no key is clipped by the bay it stands in  — every key whole
+  ok   the places are a strip of their own, above the picture and off the desk  — 6 places, in the title
+  ok   the lamps and the meter are on the desk and reading the machine, and so is the scope  — 5 lamps, meter 6 px "LHC 7%", scope 120 px with 3600 lit pixels
+--- 1101x860 (the desk, at every place) ---
+       desk 16,786 1069x58, places 82,16 396x31
+  ok   nothing on the desk moves when the place does  — 8 boxes, six places, one set of pixels
+  ok   no key is clipped by the bay it stands in  — every key whole
+  ok   the places are a strip of their own, above the picture and off the desk  — 6 places, in the title
+  ok   the lamps and the meter are on the desk and reading the machine — and the scope has stood down  — 5 lamps, meter 6 px "LHC 7%", scope 0 px with 0 lit pixels
+--- 390x844 (a phone) ---
+  ok   the readouts are in the sheet
+  ok   the phone reached two colliding beams  — both experiments have collected
+  ok   the machine is drawn above the sheet, not behind it  — machine ends at 470 px, the sheet starts at 736
+  ok   the desk stands on top of the sheet  — desk 618..728, sheet from 736
+  ok   the places are along the very bottom of the window, under everything  — places 804..844 of 844, 390 px wide, sheet ends at 804
+  ok   nothing runs off the side of the window  — 0 px over
+  ok   every control is big enough for a finger  — smallest is 29 px
+  ok   an experiment is a tab in the sheet rather than a card over the machine  — 366 px wide, picture 320 px
+  ok   the readouts fill the sheet rather than huddling in a column  — 366 px of 366
+  ok   no control is cut off by the edge of the window  — every one of them whole
+  ok   no panel has been crushed — the sheet scrolls, its panels do not  — none
+  ok   a place can be reached by tapping it  — at sps
+  ok   a page opened normally has its incidents switched on  — enabled = true
+
+1 page check(s) failed
